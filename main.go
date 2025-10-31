@@ -611,6 +611,7 @@ func handleGame(w http.ResponseWriter, r *http.Request) {
 			TotalPlayers  int
 			IsReady       bool
 			PlayerID      string
+			Challenge     string
 		}{
 			RoomCode:      game.RoomCode,
 			Players:       game.Players,
@@ -619,6 +620,7 @@ func handleGame(w http.ResponseWriter, r *http.Request) {
 			TotalPlayers:  len(game.Players),
 			IsReady:       game.ReadyToVote[playerID],
 			PlayerID:      playerID,
+			Challenge:     player.Challenge,
 		}
 		templates.ExecuteTemplate(w, "playing.html", data)
 

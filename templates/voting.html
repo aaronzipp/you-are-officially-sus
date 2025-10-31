@@ -16,29 +16,31 @@
         <main id="voting-content"
               hx-get="/game/{{.RoomCode}}/{{.PlayerID}}" 
               hx-trigger="every 2s"
-              hx-swap="outerHTML">
+              hx-swap="innerHTML"
+              hx-select="#voting-inner">
             
-            {{if .HasVoted}}
-            <div class="card">
-                <p class="vote-status">✓ You voted for: 
+            <div id="voting-inner">
+                {{if .HasVoted}}
+                <div class="card">
+                    <p class="vote-status">✓ You voted</p>
+                    <p class="text-muted">Waiting for other players to vote...</p>
+                </div>
+                {{else}}
+                <div class="card">
+                    <p class="text-muted">Select who you think is the spy:</p>
+                </div>
+                <div class="voting-grid">
                     {{range .Players}}
-                        {{if eq .ID $.VotedForID}}{{.Name}}{{end}}
+                    <form hx-post="/vote/{{$.RoomCode}}/{{$.PlayerID}}" class="vote-option">
+                        <input type="hidden" name="suspect" value="{{.ID}}">
+                        <button type="submit" class="btn btn-vote">
+                            Vote
+                        </button>
+                    </form>
                     {{end}}
-                </p>
-                <p class="text-muted">Waiting for other players to vote...</p>
-            </div>
-            {{else}}
-            <div class="voting-grid">
-                {{range .Players}}
-                <form hx-post="/vote/{{$.RoomCode}}/{{$.PlayerID}}" class="vote-option">
-                    <input type="hidden" name="suspect" value="{{.ID}}">
-                    <button type="submit" class="btn btn-vote">
-                        {{.Name}}
-                    </button>
-                </form>
+                </div>
                 {{end}}
             </div>
-            {{end}}
         </main>
     </div>
 </body>

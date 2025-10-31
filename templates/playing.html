@@ -10,41 +10,47 @@
 <body>
     <div class="container">
         <header>
-            <div class="timer-display">
-                <span>Time Remaining:</span>
-                <strong>{{.TimeRemaining}}</strong>
+            <div id="timer-display" class="timer-display" 
+                 hx-get="/game/{{.RoomCode}}/{{.PlayerID}}" 
+                 hx-trigger="every 2s"
+                 hx-swap="innerHTML"
+                 hx-select="#timer-content">
+                <div id="timer-content">
+                    <span>Time Remaining:</span>
+                    <strong>{{.TimeRemaining}}</strong>
+                </div>
             </div>
         </header>
 
-        <main id="game-content" 
-              hx-get="/game/{{.RoomCode}}/{{.PlayerID}}" 
-              hx-trigger="every 2s"
-              hx-swap="outerHTML">
-            
+        <main>
             <div class="card">
-                <h2>Players ({{.TotalPlayers}})</h2>
-                <ul class="player-list">
-                    {{range .Players}}
-                    <li class="player-item">
-                        <span class="player-name">{{.Name}}</span>
-                    </li>
-                    {{end}}
-                </ul>
-            </div>
-
-            <div class="card">
-                <div class="ready-section">
-                    <p class="ready-count">{{.ReadyCount}}/{{.TotalPlayers}} players ready to vote</p>
-                    <form hx-post="/ready/{{.RoomCode}}/{{.PlayerID}}">
-                        <button type="submit" class="btn {{if .IsReady}}btn-success{{else}}btn-secondary{{end}}">
-                            {{if .IsReady}}✓ Ready to Vote{{else}}Ready to Vote?{{end}}
-                        </button>
-                    </form>
+                <div class="challenge-info">
+                    <p class="label">Your Challenge:</p>
+                    <p class="value">{{.Challenge}}</p>
                 </div>
             </div>
 
-            <div class="card">
-                <p class="room-code-small">Room: <strong>{{.RoomCode}}</strong></p>
+            <div id="game-status" 
+                 hx-get="/game/{{.RoomCode}}/{{.PlayerID}}" 
+                 hx-trigger="every 2s"
+                 hx-swap="innerHTML"
+                 hx-select="#game-status-content">
+                <div id="game-status-content">
+                    <div class="card">
+                        <div class="ready-section">
+                            <p class="ready-count">{{.ReadyCount}}/{{.TotalPlayers}} players ready to vote</p>
+                            <form hx-post="/ready/{{.RoomCode}}/{{.PlayerID}}">
+                                <button type="submit" class="btn {{if .IsReady}}btn-success{{else}}btn-secondary{{end}}">
+                                    {{if .IsReady}}✓ Ready to Vote{{else}}Ready to Vote?{{end}}
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <p class="room-code-small">Room: <strong>{{.RoomCode}}</strong></p>
+                    </div>
+                </div>
             </div>
         </main>
 
