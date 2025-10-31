@@ -7,7 +7,9 @@
     <link rel="stylesheet" href="/static/style.css">
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
 </head>
-<body>
+<body hx-get="/game/{{.RoomCode}}/{{.Player.ID}}" 
+      hx-trigger="every 2s" 
+      hx-swap="none">
     <div class="container">
         <main>
             <div class="role-card {{if .IsSpy}}spy{{else}}innocent{{end}}">
@@ -30,8 +32,12 @@
                     <p class="value">{{.Challenge}}</p>
                 </div>
 
-                <form hx-post="/confirm/{{.RoomCode}}/{{.Player.ID}}">
-                    <button type="submit" class="btn btn-primary">I've Seen My Role ✓</button>
+                <form hx-post="/confirm/{{.RoomCode}}/{{.Player.ID}}" 
+                      hx-target="#confirm-button" 
+                      hx-swap="outerHTML">
+                    <button id="confirm-button" type="submit" class="btn {{if .HasConfirmed}}btn-success{{else}}btn-primary{{end}}">
+                        {{if .HasConfirmed}}✓ Waiting for others...{{else}}I've Seen My Role ✓{{end}}
+                    </button>
                 </form>
             </div>
 

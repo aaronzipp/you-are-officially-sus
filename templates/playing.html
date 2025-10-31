@@ -30,27 +30,24 @@
                 </div>
             </div>
 
-            <div id="game-status" 
-                 hx-get="/game/{{.RoomCode}}/{{.PlayerID}}" 
-                 hx-trigger="every 2s"
-                 hx-swap="innerHTML"
-                 hx-select="#game-status-content">
-                <div id="game-status-content">
-                    <div class="card">
-                        <div class="ready-section">
-                            <p class="ready-count">{{.ReadyCount}}/{{.TotalPlayers}} players ready to vote</p>
-                            <form hx-post="/ready/{{.RoomCode}}/{{.PlayerID}}">
-                                <button type="submit" class="btn {{if .IsReady}}btn-success{{else}}btn-secondary{{end}}">
-                                    {{if .IsReady}}✓ Ready to Vote{{else}}Ready to Vote?{{end}}
-                                </button>
-                            </form>
-                        </div>
-                    </div>
-
-                    <div class="card">
-                        <p class="room-code-small">Room: <strong>{{.RoomCode}}</strong></p>
-                    </div>
+            <div class="card">
+                <div class="ready-section">
+                    <p id="ready-count" class="ready-count" 
+                       hx-get="/ready-status/{{.RoomCode}}/{{.PlayerID}}" 
+                       hx-trigger="every 2s"
+                       hx-swap="innerHTML">{{.ReadyCount}}/{{.TotalPlayers}} players ready to vote</p>
+                    <form hx-post="/ready/{{.RoomCode}}/{{.PlayerID}}" 
+                          hx-target="#ready-button" 
+                          hx-swap="outerHTML">
+                        <button id="ready-button" type="submit" class="btn {{if .IsReady}}btn-success{{else}}btn-secondary{{end}}">
+                            {{if .IsReady}}✓ Ready to Vote{{else}}Ready to Vote?{{end}}
+                        </button>
+                    </form>
                 </div>
+            </div>
+
+            <div class="card">
+                <p class="room-code-small">Room: <strong>{{.RoomCode}}</strong></p>
             </div>
         </main>
 

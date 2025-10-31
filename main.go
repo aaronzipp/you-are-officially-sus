@@ -92,6 +92,7 @@ func main() {
 	http.HandleFunc("/game/", handleGame)
 	http.HandleFunc("/confirm/", handleConfirmRole)
 	http.HandleFunc("/ready/", handleToggleReady)
+	http.HandleFunc("/ready-status/", handleReadyStatus)
 	http.HandleFunc("/vote/", handleVote)
 	http.HandleFunc("/results/", handleResults)
 
@@ -580,21 +581,36 @@ func handleGame(w http.ResponseWriter, r *http.Request) {
 	switch game.Status {
 	case StatusRoleReveal:
 		data := struct {
-			RoomCode  string
-			Player    *Player
-			Location  *Location
-			Challenge string
-			IsSpy     bool
+			RoomCode     string
+			Player       *Player
+			Location     *Location
+			Challenge    string
+			IsSpy        bool
+			HasConfirmed bool
 		}{
-			RoomCode:  game.RoomCode,
-			Player:    player,
-			Location:  game.Location,
-			Challenge: player.Challenge,
-			IsSpy:     player.IsSpy,
+			RoomCode:     game.RoomCode,
+			Player:       player,
+			Location:     game.Location,
+			Challenge:    player.Challenge,
+			IsSpy:        player.IsSpy,
+			HasConfirmed: player.HasConfirmedRole,
 		}
 		templates.ExecuteTemplate(w, "role-reveal.html", data)
 
 	case StatusPlaying:
+		// Check if this is an HTMX polling request from role-reveal screen
+		// If the game has transitioned to playing but we're getting polled from role-reveal, redirect
+		if r.Header.Get("HX-Request") == "true" {
+			// Check if this looks like a polling request (not a direct navigation)
+			// Polling requests come from <body hx-get="..."> with hx-swap="none"
+			if r.Header.Get("HX-Target") == "" {
+				// This is a polling request, send redirect
+				w.Header().Set("HX-Redirect", fmt.Sprintf("/game/%s/%s", game.RoomCode, playerID))
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+		}
+
 		timeRemaining := game.timeRemaining()
 		readyCount := 0
 		for _, ready := range game.ReadyToVote {
@@ -670,7 +686,6 @@ func handleConfirmRole(w http.ResponseWriter, r *http.Request) {
 	}
 
 	game.mu.Lock()
-	defer game.mu.Unlock()
 
 	// Find and mark player as confirmed
 	for _, p := range game.Players {
@@ -695,9 +710,12 @@ func handleConfirmRole(w http.ResponseWriter, r *http.Request) {
 		game.StartTime = time.Now()
 	}
 
-	// Return the game view
-	w.Header().Set("HX-Redirect", fmt.Sprintf("/game/%s/%s", roomCode, playerID))
-	w.WriteHeader(http.StatusOK)
+	game.mu.Unlock()
+
+	// Return updated button HTML showing confirmed state
+	html := `<button id="confirm-button" type="submit" class="btn btn-success">✓ Waiting for others...</button>`
+	w.Header().Set("Content-Type", "text/html")
+	w.Write([]byte(html))
 }
 
 // handleToggleReady toggles a player's ready to vote status
@@ -726,10 +744,78 @@ func handleToggleReady(w http.ResponseWriter, r *http.Request) {
 
 	game.mu.Lock()
 	game.ReadyToVote[playerID] = !game.ReadyToVote[playerID]
+	isReady := game.ReadyToVote[playerID]
+
+	// Count ready players
+	readyCount := 0
+	for _, ready := range game.ReadyToVote {
+		if ready {
+			readyCount++
+		}
+	}
+	totalPlayers := len(game.Players)
+
+	// Check if all players are ready
+	if readyCount == totalPlayers && totalPlayers > 0 {
+		game.Status = StatusVoting
+	}
 	game.mu.Unlock()
 
-	// Return updated game view
-	http.Redirect(w, r, fmt.Sprintf("/game/%s/%s", roomCode, playerID), http.StatusSeeOther)
+	// Return just the button HTML
+	buttonClass := "btn-secondary"
+	buttonText := "Ready to Vote?"
+	if isReady {
+		buttonClass = "btn-success"
+		buttonText = "✓ Ready to Vote"
+	}
+
+	html := fmt.Sprintf(`<button id="ready-button" type="submit" class="btn %s">%s</button>`, buttonClass, buttonText)
+
+	w.Header().Set("Content-Type", "text/html")
+	w.Write([]byte(html))
+}
+
+// handleReadyStatus returns the current ready count
+func handleReadyStatus(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/ready-status/"), "/")
+	if len(parts) != 2 {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+	roomCode := parts[0]
+	playerID := parts[1]
+
+	gamesMutex.RLock()
+	game, exists := games[roomCode]
+	gamesMutex.RUnlock()
+
+	if !exists {
+		http.Error(w, "Game not found", http.StatusNotFound)
+		return
+	}
+
+	game.mu.RLock()
+	readyCount := 0
+	for _, ready := range game.ReadyToVote {
+		if ready {
+			readyCount++
+		}
+	}
+	totalPlayers := len(game.Players)
+	status := game.Status
+	game.mu.RUnlock()
+
+	// If all players are ready, send redirect header to voting page
+	if status == StatusVoting {
+		w.Header().Set("HX-Redirect", fmt.Sprintf("/vote/%s/%s", roomCode, playerID))
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// Return just the ready count text
+	html := fmt.Sprintf("%d/%d players ready to vote", readyCount, totalPlayers)
+	w.Header().Set("Content-Type", "text/html")
+	w.Write([]byte(html))
 }
 
 // handleVote records a player's vote for who the spy is
