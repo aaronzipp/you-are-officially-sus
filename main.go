@@ -445,13 +445,11 @@ func renderHostControls(game *Game, playerID string) string {
 	playerCount := len(game.Players)
 
 	if isHost {
-		html := `<p>Waiting for players to join...</p>`
 		if playerCount >= 3 {
-			html += fmt.Sprintf(`<form hx-post="/start/%s"><button type="submit" class="btn btn-primary">Start Game</button></form>`, game.RoomCode)
+			return fmt.Sprintf(`<form hx-post="/start/%s"><button type="submit" class="btn btn-primary">Start Game</button></form>`, game.RoomCode)
 		} else {
-			html += `<p class="text-muted">Need at least 3 players to start</p>`
+			return `<p>Waiting for players to join...</p><p class="text-muted">Need at least 3 players to start</p>`
 		}
-		return html
 	}
 	return `<p>Waiting for host to start the game...</p>`
 }
@@ -483,20 +481,22 @@ func handleStartGame(w http.ResponseWriter, r *http.Request) {
 	playerID := cookie.Value
 
 	game.mu.Lock()
-	defer game.mu.Unlock()
 
 	// Check if player is host
 	if game.Host != playerID {
+		game.mu.Unlock()
 		http.Error(w, "Only host can start game", http.StatusForbidden)
 		return
 	}
 
 	if game.Status != StatusWaiting {
+		game.mu.Unlock()
 		http.Error(w, "Game already started", http.StatusBadRequest)
 		return
 	}
 
 	if len(game.Players) < 3 {
+		game.mu.Unlock()
 		http.Error(w, "Need at least 3 players", http.StatusBadRequest)
 		return
 	}
@@ -521,6 +521,7 @@ func handleStartGame(w http.ResponseWriter, r *http.Request) {
 	}
 
 	game.Status = StatusRoleReveal
+	game.mu.Unlock()
 
 	// Notify all connected clients to redirect
 	game.broadcast("event: game-started\ndata: started")

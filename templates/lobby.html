@@ -8,13 +8,17 @@
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://unpkg.com/htmx.org@1.9.10/dist/ext/sse.js"></script>
     <script>
-        // Listen for game start and redirect
+        // Listen for game start and redirect all players
         document.addEventListener('DOMContentLoaded', function() {
-            const playerID = document.cookie.split('; ').find(row => row.startsWith('player_id='))?.split('=')[1];
+            const cookies = document.cookie.split('; ');
+            const playerCookie = cookies.find(row => row.startsWith('player_id='));
+            const playerID = playerCookie ? playerCookie.split('=')[1] : '';
             const roomCode = '{{.RoomCode}}';
             
-            htmx.on(document.body, 'htmx:sse:message', function(evt) {
-                if (evt.detail.type === 'game-started') {
+            // Use HTMX event listener for SSE messages
+            document.body.addEventListener('htmx:sseMessage', function(evt) {
+                // Check if this is a game-started event by checking the SSE event type
+                if (evt.detail && evt.detail.type === 'game-started') {
                     window.location.href = `/game/${roomCode}/${playerID}`;
                 }
             });
@@ -32,6 +36,9 @@
         </header>
 
         <main>
+            <!-- Hidden element to register game-started SSE listener -->
+            <div style="display:none;" sse-swap="game-started"></div>
+            
             <div id="player-list-card" class="card" sse-swap="players">
                 <h2>Players ({{len .Players}})</h2>
                 <ul class="player-list">
@@ -45,12 +52,12 @@
 
             {{if .IsHost}}
             <div id="host-controls" class="card" sse-swap="controls">
-                <p>Waiting for players to join...</p>
                 {{if ge (len .Players) 3}}
                 <form hx-post="/start/{{.RoomCode}}">
                     <button type="submit" class="btn btn-primary">Start Game</button>
                 </form>
                 {{else}}
+                <p>Waiting for players to join...</p>
                 <p class="text-muted">Need at least 3 players to start</p>
                 {{end}}
             </div>
