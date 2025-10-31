@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lobby - You Are Sus</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10/dist/ext/sse.js"></script>
+    <script>
+        // Listen for game start and redirect
+        document.addEventListener('DOMContentLoaded', function() {
+            const playerID = document.cookie.split('; ').find(row => row.startsWith('player_id='))?.split('=')[1];
+            const roomCode = '{{.RoomCode}}';
+            
+            htmx.on(document.body, 'htmx:sse:message', function(evt) {
+                if (evt.detail.type === 'game-started') {
+                    window.location.href = `/game/${roomCode}/${playerID}`;
+                }
+            });
+        });
+    </script>
+</head>
+<body hx-ext="sse" sse-connect="/lobby-updates/{{.RoomCode}}">
+    <div class="container">
+        <header>
+            <h1>Room Lobby</h1>
+            <div class="room-code-display">
+                <span>Room Code:</span>
+                <strong>{{.RoomCode}}</strong>
+            </div>
+        </header>
+
+        <main>
+            <div id="player-list-card" class="card" sse-swap="players">
+                <h2>Players ({{len .Players}})</h2>
+                <ul class="player-list">
+                    {{range .Players}}
+                    <li class="player-item">
+                        <span class="player-name">{{.Name}}</span>
+                    </li>
+                    {{end}}
+                </ul>
+            </div>
+
+            {{if .IsHost}}
+            <div id="host-controls" class="card" sse-swap="controls">
+                <p>Waiting for players to join...</p>
+                {{if ge (len .Players) 3}}
+                <form hx-post="/start/{{.RoomCode}}">
+                    <button type="submit" class="btn btn-primary">Start Game</button>
+                </form>
+                {{else}}
+                <p class="text-muted">Need at least 3 players to start</p>
+                {{end}}
+            </div>
+            {{else}}
+            <div id="host-controls" class="card" sse-swap="controls">
+                <p>Waiting for host to start the game...</p>
+            </div>
+            {{end}}
+        </main>
+
+        <footer>
+            <p>Share the room code with your friends!</p>
+        </footer>
+    </div>
+</body>
+</html>

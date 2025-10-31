@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Results - You Are Sus</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Game Results</h1>
+        </header>
+
+        <main>
+            <div class="card results-card">
+                <h2>The Spy Was...</h2>
+                <p class="spy-reveal">{{.Spy.Name}}!</p>
+                
+                <div class="location-reveal">
+                    <p class="label">The location was:</p>
+                    <p class="value">{{.Location.Word}}</p>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Voting Results</h2>
+                <ul class="vote-results">
+                    {{range .Players}}
+                    <li class="vote-result-item">
+                        <strong>{{.Name}}</strong> received {{index $.VoteCount .ID}} vote(s)
+                        {{if eq .ID $.Spy.ID}}<span class="badge">SPY</span>{{end}}
+                    </li>
+                    {{end}}
+                </ul>
+            </div>
+
+            <div class="card">
+                <h2>Who Voted For Whom</h2>
+                <ul class="vote-details">
+                    {{range $voterID, $suspectID := .Votes}}
+                        {{range $.Players}}
+                            {{if eq .ID $voterID}}
+                                <li>
+                                    {{.Name}} → 
+                                    {{range $.Players}}
+                                        {{if eq .ID $suspectID}}{{.Name}}{{end}}
+                                    {{end}}
+                                    {{if index $.VotedCorrectly $voterID}}
+                                        <span class="correct">✓</span>
+                                    {{else}}
+                                        <span class="incorrect">✗</span>
+                                    {{end}}
+                                </li>
+                            {{end}}
+                        {{end}}
+                    {{end}}
+                </ul>
+            </div>
+
+            <div class="card">
+                <h2>Challenges</h2>
+                <ul class="challenge-list">
+                    {{range .Players}}
+                    <li class="challenge-item">
+                        <strong>{{.Name}}:</strong> "{{.Challenge}}"
+                    </li>
+                    {{end}}
+                </ul>
+            </div>
+
+            <div class="actions">
+                <a href="/" class="btn btn-primary">New Game</a>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

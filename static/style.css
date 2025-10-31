@@ -1,0 +1,455 @@
+/* Reset and Base Styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --primary: #6366f1;
+    --primary-dark: #4f46e5;
+    --secondary: #8b5cf6;
+    --success: #10b981;
+    --danger: #ef4444;
+    --warning: #f59e0b;
+    --bg: #0f172a;
+    --bg-card: #1e293b;
+    --bg-card-hover: #334155;
+    --text: #f1f5f9;
+    --text-muted: #94a3b8;
+    --border: #334155;
+    --spy: #dc2626;
+    --innocent: #059669;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    min-height: 100vh;
+    padding: 1rem;
+}
+
+.container {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 1rem;
+}
+
+/* Typography */
+h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    text-align: center;
+}
+
+h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+}
+
+.subtitle {
+    text-align: center;
+    color: var(--text-muted);
+    margin-bottom: 2rem;
+}
+
+/* Header */
+header {
+    margin-bottom: 2rem;
+}
+
+.room-code-display {
+    text-align: center;
+    padding: 1rem;
+    background: var(--bg-card);
+    border-radius: 0.5rem;
+    margin-top: 1rem;
+}
+
+.room-code-display strong {
+    font-size: 2rem;
+    color: var(--primary);
+    letter-spacing: 0.2em;
+}
+
+.timer-display {
+    text-align: center;
+    padding: 1rem;
+    background: var(--bg-card);
+    border-radius: 0.5rem;
+    font-size: 1.25rem;
+}
+
+.timer-display strong {
+    color: var(--warning);
+    font-size: 1.5rem;
+}
+
+/* Cards */
+.card {
+    background: var(--bg-card);
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    border: 1px solid var(--border);
+}
+
+.info-card {
+    background: rgba(99, 102, 241, 0.1);
+    border: 1px solid var(--primary);
+    border-radius: 0.5rem;
+    padding: 1rem;
+    margin-top: 1rem;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+/* Role Card */
+.role-card {
+    background: var(--bg-card);
+    border-radius: 1rem;
+    padding: 2rem;
+    text-align: center;
+    border: 3px solid var(--border);
+    margin-bottom: 1.5rem;
+}
+
+.role-card.spy {
+    border-color: var(--spy);
+    background: linear-gradient(135deg, var(--bg-card), rgba(220, 38, 38, 0.1));
+}
+
+.role-card.innocent {
+    border-color: var(--innocent);
+    background: linear-gradient(135deg, var(--bg-card), rgba(5, 150, 105, 0.1));
+}
+
+.role-title {
+    font-size: 2rem;
+    margin-bottom: 2rem;
+}
+
+.role-card.spy .role-title {
+    color: var(--spy);
+}
+
+.role-card.innocent .role-title {
+    color: var(--innocent);
+}
+
+.role-info, .challenge-info {
+    margin-bottom: 2rem;
+    padding: 1.5rem;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 0.5rem;
+}
+
+.role-info .label, .challenge-info .label {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
+}
+
+.role-info .value, .challenge-info .value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text);
+}
+
+/* Forms and Inputs */
+input[type="text"] {
+    width: 100%;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border: 2px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    border-radius: 0.5rem;
+    font-size: 1rem;
+}
+
+input[type="text"]:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+/* Buttons */
+.btn {
+    width: 100%;
+    padding: 1rem 1.5rem;
+    font-size: 1.125rem;
+    font-weight: 600;
+    border: none;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-decoration: none;
+    display: inline-block;
+    text-align: center;
+}
+
+.btn-primary {
+    background: var(--primary);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: var(--primary-dark);
+    transform: translateY(-2px);
+}
+
+.btn-secondary {
+    background: var(--secondary);
+    color: white;
+}
+
+.btn-secondary:hover {
+    background: #7c3aed;
+    transform: translateY(-2px);
+}
+
+.btn-success {
+    background: var(--success);
+    color: white;
+}
+
+.btn-success:hover {
+    background: #059669;
+}
+
+.btn-vote {
+    background: var(--bg);
+    color: var(--text);
+    border: 2px solid var(--border);
+    margin-bottom: 0.75rem;
+}
+
+.btn-vote:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--primary);
+}
+
+/* Player List */
+.player-list {
+    list-style: none;
+}
+
+.player-item {
+    padding: 1rem;
+    background: var(--bg);
+    border-radius: 0.5rem;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.player-name {
+    font-weight: 500;
+    font-size: 1.125rem;
+}
+
+/* Ready Section */
+.ready-section {
+    text-align: center;
+}
+
+.ready-count {
+    font-size: 1.25rem;
+    margin-bottom: 1rem;
+    color: var(--text-muted);
+}
+
+.room-code-small {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.875rem;
+}
+
+.room-code-small strong {
+    color: var(--primary);
+    letter-spacing: 0.1em;
+}
+
+/* Voting */
+.voting-grid {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.vote-option {
+    margin: 0;
+}
+
+.vote-status {
+    font-size: 1.25rem;
+    text-align: center;
+    color: var(--success);
+    margin-bottom: 1rem;
+}
+
+/* Results */
+.results-card {
+    text-align: center;
+}
+
+.spy-reveal {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: var(--spy);
+    margin: 1.5rem 0;
+}
+
+.location-reveal {
+    margin-top: 2rem;
+    padding: 1.5rem;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 0.5rem;
+}
+
+.location-reveal .label {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+}
+
+.location-reveal .value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.vote-results, .vote-details, .challenge-list {
+    list-style: none;
+}
+
+.vote-result-item, .vote-details li, .challenge-item {
+    padding: 0.75rem;
+    background: var(--bg);
+    border-radius: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.badge {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    background: var(--spy);
+    color: white;
+    border-radius: 1rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    margin-left: 0.5rem;
+}
+
+.correct {
+    color: var(--success);
+    font-weight: 700;
+    margin-left: 0.5rem;
+}
+
+.incorrect {
+    color: var(--danger);
+    font-weight: 700;
+    margin-left: 0.5rem;
+}
+
+/* Divider */
+.divider {
+    text-align: center;
+    margin: 2rem 0;
+    position: relative;
+}
+
+.divider::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: var(--border);
+}
+
+.divider span {
+    background: var(--bg);
+    padding: 0 1rem;
+    position: relative;
+    color: var(--text-muted);
+}
+
+/* Actions */
+.actions {
+    margin-top: 2rem;
+    display: flex;
+    gap: 1rem;
+}
+
+.actions .btn {
+    flex: 1;
+}
+
+/* Footer */
+footer {
+    text-align: center;
+    margin-top: 3rem;
+    color: var(--text-muted);
+    font-size: 0.875rem;
+}
+
+/* Text Utilities */
+.text-muted {
+    color: var(--text-muted);
+}
+
+/* Mobile Optimizations */
+@media (max-width: 640px) {
+    body {
+        padding: 0.5rem;
+    }
+
+    .container {
+        padding: 0.5rem;
+    }
+
+    h1 {
+        font-size: 1.75rem;
+    }
+
+    .room-code-display strong {
+        font-size: 1.5rem;
+    }
+
+    .role-title {
+        font-size: 1.5rem;
+    }
+
+    .role-info .value, .challenge-info .value {
+        font-size: 1.25rem;
+    }
+}
+
+/* Loading States */
+.htmx-request {
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+/* Prevent text selection on buttons */
+button {
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+/* Touch optimizations */
+@media (hover: none) {
+    .btn:active {
+        transform: scale(0.98);
+    }
+}

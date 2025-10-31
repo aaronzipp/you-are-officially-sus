@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vote - You Are Sus</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Who is the spy?</h1>
+        </header>
+
+        <main id="voting-content"
+              hx-get="/game/{{.RoomCode}}/{{.PlayerID}}" 
+              hx-trigger="every 2s"
+              hx-swap="outerHTML">
+            
+            {{if .HasVoted}}
+            <div class="card">
+                <p class="vote-status">✓ You voted for: 
+                    {{range .Players}}
+                        {{if eq .ID $.VotedForID}}{{.Name}}{{end}}
+                    {{end}}
+                </p>
+                <p class="text-muted">Waiting for other players to vote...</p>
+            </div>
+            {{else}}
+            <div class="voting-grid">
+                {{range .Players}}
+                <form hx-post="/vote/{{$.RoomCode}}/{{$.PlayerID}}" class="vote-option">
+                    <input type="hidden" name="suspect" value="{{.ID}}">
+                    <button type="submit" class="btn btn-vote">
+                        {{.Name}}
+                    </button>
+                </form>
+                {{end}}
+            </div>
+            {{end}}
+        </main>
+    </div>
+</body>
+</html>
