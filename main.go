@@ -20,6 +20,7 @@ type GameStatus string
 
 const (
 	StatusWaiting    GameStatus = "waiting"
+	StatusReadyCheck GameStatus = "ready_check"
 	StatusRoleReveal GameStatus = "role_reveal"
 	StatusPlaying    GameStatus = "playing"
 	StatusVoting     GameStatus = "voting"
@@ -43,17 +44,20 @@ type Player struct {
 
 // Game represents a game room
 type Game struct {
-	RoomCode    string
-	Host        string
-	Players     []*Player
-	Status      GameStatus
-	Location    *Location
-	SpyID       string
-	StartTime   time.Time
-	ReadyToVote map[string]bool
-	Votes       map[string]string
-	mu          sync.RWMutex
-	clients     map[chan string]string // channel -> playerID
+	RoomCode        string
+	Host            string
+	Players         []*Player
+	Status          GameStatus
+	Location        *Location
+	SpyID           string
+	FirstQuestioner string // Player ID of who asks the first question
+	StartTime       time.Time
+	ReadyForRole    map[string]bool // Track players ready to see their role
+	ReadyToVote     map[string]bool
+	Votes           map[string]string
+	VoteRound       int // Track voting rounds for tie-breaking
+	mu              sync.RWMutex
+	clients         map[chan string]string // channel -> playerID
 }
 
 // Global storage
@@ -75,9 +79,11 @@ func main() {
 		log.Fatal("Failed to load data:", err)
 	}
 
-	// Parse templates
+	// Parse templates with custom functions
 	var err error
-	templates, err = template.ParseGlob("templates/*.html")
+	templates, err = template.New("").Funcs(template.FuncMap{
+		"add": func(a, b int) int { return a + b },
+	}).ParseGlob("templates/*.html")
 	if err != nil {
 		log.Fatal("Failed to parse templates:", err)
 	}
@@ -90,11 +96,15 @@ func main() {
 	http.HandleFunc("/lobby-updates/", handleLobbySSE)
 	http.HandleFunc("/start/", handleStartGame)
 	http.HandleFunc("/game/", handleGame)
+	http.HandleFunc("/ready-for-role/", handleReadyForRole)
+	http.HandleFunc("/ready-for-role-status/", handleReadyForRoleStatus)
 	http.HandleFunc("/confirm/", handleConfirmRole)
 	http.HandleFunc("/ready/", handleToggleReady)
 	http.HandleFunc("/ready-status/", handleReadyStatus)
 	http.HandleFunc("/vote/", handleVote)
+	http.HandleFunc("/vote-status/", handleVoteStatus)
 	http.HandleFunc("/results/", handleResults)
+	http.HandleFunc("/restart/", handleRestartGame)
 
 	// Static files
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
@@ -259,12 +269,13 @@ func handleCreateRoom(w http.ResponseWriter, r *http.Request) {
 	roomCode := getUniqueRoomCode()
 
 	game := &Game{
-		RoomCode:    roomCode,
-		Host:        playerID,
-		Players:     []*Player{{ID: playerID, Name: hostName}},
-		Status:      StatusWaiting,
-		ReadyToVote: make(map[string]bool),
-		Votes:       make(map[string]string),
+		RoomCode:     roomCode,
+		Host:         playerID,
+		Players:      []*Player{{ID: playerID, Name: hostName}},
+		Status:       StatusWaiting,
+		ReadyForRole: make(map[string]bool),
+		ReadyToVote:  make(map[string]bool),
+		Votes:        make(map[string]string),
 	}
 
 	gamesMutex.Lock()
@@ -521,7 +532,7 @@ func handleStartGame(w http.ResponseWriter, r *http.Request) {
 		player.Challenge = shuffledChallenges[i%len(shuffledChallenges)]
 	}
 
-	game.Status = StatusRoleReveal
+	game.Status = StatusReadyCheck
 	game.mu.Unlock()
 
 	// Notify all connected clients to redirect
@@ -579,7 +590,49 @@ func handleGame(w http.ResponseWriter, r *http.Request) {
 
 	// Render appropriate template based on status
 	switch game.Status {
+	case StatusReadyCheck:
+		// Check if this is an HTMX polling request
+		if r.Header.Get("HX-Request") == "true" {
+			// Body is polling - check if we should still be on this page
+			// (Status might have changed to StatusRoleReveal)
+			if game.Status != StatusReadyCheck {
+				w.Header().Set("HX-Redirect", fmt.Sprintf("/game/%s/%s", game.RoomCode, playerID))
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+		}
+
+		readyCount := 0
+		for _, ready := range game.ReadyForRole {
+			if ready {
+				readyCount++
+			}
+		}
+
+		data := struct {
+			RoomCode     string
+			PlayerID     string
+			IsReady      bool
+			ReadyCount   int
+			TotalPlayers int
+		}{
+			RoomCode:     game.RoomCode,
+			PlayerID:     playerID,
+			IsReady:      game.ReadyForRole[playerID],
+			ReadyCount:   readyCount,
+			TotalPlayers: len(game.Players),
+		}
+		templates.ExecuteTemplate(w, "ready-check.html", data)
+
 	case StatusRoleReveal:
+		// Check if this is an HTMX polling request from ready-check
+		// If so, redirect to reload the page
+		if r.Header.Get("HX-Request") == "true" {
+			w.Header().Set("HX-Redirect", fmt.Sprintf("/game/%s/%s", game.RoomCode, playerID))
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
 		data := struct {
 			RoomCode     string
 			Player       *Player
@@ -620,45 +673,155 @@ func handleGame(w http.ResponseWriter, r *http.Request) {
 		}
 
 		data := struct {
-			RoomCode      string
-			Players       []*Player
-			TimeRemaining string
-			ReadyCount    int
-			TotalPlayers  int
-			IsReady       bool
-			PlayerID      string
-			Challenge     string
+			RoomCode        string
+			Players         []*Player
+			TimeRemaining   string
+			ReadyCount      int
+			TotalPlayers    int
+			IsReady         bool
+			PlayerID        string
+			Challenge       string
+			FirstQuestioner string
 		}{
-			RoomCode:      game.RoomCode,
-			Players:       game.Players,
-			TimeRemaining: formatDuration(timeRemaining),
-			ReadyCount:    readyCount,
-			TotalPlayers:  len(game.Players),
-			IsReady:       game.ReadyToVote[playerID],
-			PlayerID:      playerID,
-			Challenge:     player.Challenge,
+			RoomCode:        game.RoomCode,
+			Players:         game.Players,
+			TimeRemaining:   formatDuration(timeRemaining),
+			ReadyCount:      readyCount,
+			TotalPlayers:    len(game.Players),
+			IsReady:         game.ReadyToVote[playerID],
+			PlayerID:        playerID,
+			Challenge:       player.Challenge,
+			FirstQuestioner: game.FirstQuestioner,
 		}
 		templates.ExecuteTemplate(w, "playing.html", data)
 
 	case StatusVoting:
+		voteCount := len(game.Votes)
+		totalPlayers := len(game.Players)
+
 		data := struct {
-			RoomCode   string
-			Players    []*Player
-			PlayerID   string
-			HasVoted   bool
-			VotedForID string
+			RoomCode     string
+			Players      []*Player
+			PlayerID     string
+			HasVoted     bool
+			VotedForID   string
+			VoteCount    int
+			TotalPlayers int
+			VoteRound    int
 		}{
-			RoomCode:   game.RoomCode,
-			Players:    game.Players,
-			PlayerID:   playerID,
-			HasVoted:   game.Votes[playerID] != "",
-			VotedForID: game.Votes[playerID],
+			RoomCode:     game.RoomCode,
+			Players:      game.Players,
+			PlayerID:     playerID,
+			HasVoted:     game.Votes[playerID] != "",
+			VotedForID:   game.Votes[playerID],
+			VoteCount:    voteCount,
+			TotalPlayers: totalPlayers,
+			VoteRound:    game.VoteRound,
 		}
 		templates.ExecuteTemplate(w, "voting.html", data)
 
 	case StatusFinished:
 		http.Redirect(w, r, "/results/"+roomCode, http.StatusSeeOther)
 	}
+}
+
+// handleReadyForRole toggles a player's ready status for role reveal
+func handleReadyForRole(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/ready-for-role/"), "/")
+	if len(parts) != 2 {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	roomCode := parts[0]
+	playerID := parts[1]
+
+	gamesMutex.RLock()
+	game, exists := games[roomCode]
+	gamesMutex.RUnlock()
+
+	if !exists {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+
+	game.mu.Lock()
+	defer game.mu.Unlock()
+
+	// Toggle ready status
+	game.ReadyForRole[playerID] = !game.ReadyForRole[playerID]
+	isReady := game.ReadyForRole[playerID]
+
+	// Check if all players are ready
+	allReady := true
+	for _, player := range game.Players {
+		if !game.ReadyForRole[player.ID] {
+			allReady = false
+			break
+		}
+	}
+
+	// If all players ready, transition to role reveal
+	if allReady && game.Status == StatusReadyCheck {
+		game.Status = StatusRoleReveal
+	}
+
+	// Return updated button HTML with ready count update
+	buttonClass := "btn-secondary"
+	buttonText := "Ready?"
+	if isReady {
+		buttonClass = "btn btn-success"
+		buttonText = "✓ Ready - Waiting for others..."
+	}
+
+	// Count ready players
+	readyCount := 0
+	for _, ready := range game.ReadyForRole {
+		if ready {
+			readyCount++
+		}
+	}
+
+	w.Header().Set("Content-Type", "text/html")
+	fmt.Fprintf(w, `<button id="ready-button" type="submit" class="%s" hx-post="/ready-for-role/%s/%s" hx-target="#ready-button-container" hx-swap="innerHTML">%s</button>`, buttonClass, roomCode, playerID, buttonText)
+}
+
+// handleReadyForRoleStatus returns the current ready count for the ready-check page
+func handleReadyForRoleStatus(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/ready-for-role-status/"), "/")
+	if len(parts) != 1 {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+	roomCode := parts[0]
+
+	gamesMutex.RLock()
+	game, exists := games[roomCode]
+	gamesMutex.RUnlock()
+
+	if !exists {
+		http.Error(w, "Game not found", http.StatusNotFound)
+		return
+	}
+
+	game.mu.RLock()
+	readyCount := 0
+	for _, ready := range game.ReadyForRole {
+		if ready {
+			readyCount++
+		}
+	}
+	totalPlayers := len(game.Players)
+	game.mu.RUnlock()
+
+	// Return just the ready count text
+	html := fmt.Sprintf(`<p class="ready-count">%d/%d players ready</p>`, readyCount, totalPlayers)
+	w.Header().Set("Content-Type", "text/html")
+	w.Write([]byte(html))
 }
 
 // handleConfirmRole marks that a player has seen their role
@@ -708,6 +871,8 @@ func handleConfirmRole(w http.ResponseWriter, r *http.Request) {
 	if allConfirmed && game.Status == StatusRoleReveal {
 		game.Status = StatusPlaying
 		game.StartTime = time.Now()
+		// Choose a random player to ask the first question
+		game.FirstQuestioner = game.Players[rand.Intn(len(game.Players))].ID
 	}
 
 	game.mu.Unlock()
@@ -758,6 +923,7 @@ func handleToggleReady(w http.ResponseWriter, r *http.Request) {
 	// Check if all players are ready
 	if readyCount == totalPlayers && totalPlayers > 0 {
 		game.Status = StatusVoting
+		game.VoteRound = 1 // Initialize vote round
 	}
 	game.mu.Unlock()
 
@@ -807,7 +973,7 @@ func handleReadyStatus(w http.ResponseWriter, r *http.Request) {
 
 	// If all players are ready, send redirect header to voting page
 	if status == StatusVoting {
-		w.Header().Set("HX-Redirect", fmt.Sprintf("/vote/%s/%s", roomCode, playerID))
+		w.Header().Set("HX-Redirect", fmt.Sprintf("/game/%s/%s", roomCode, playerID))
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -850,22 +1016,116 @@ func handleVote(w http.ResponseWriter, r *http.Request) {
 
 	// Check if all players voted
 	allVoted := len(game.Votes) == len(game.Players)
+
 	if allVoted {
-		game.Status = StatusFinished
+		// Count votes to check for ties
+		voteCount := make(map[string]int)
+		for _, votedFor := range game.Votes {
+			voteCount[votedFor]++
+		}
+
+		// Find the maximum vote count
+		maxVotes := 0
+		var playersWithMaxVotes []string
+		for playerID, count := range voteCount {
+			if count > maxVotes {
+				maxVotes = count
+				playersWithMaxVotes = []string{playerID}
+			} else if count == maxVotes {
+				playersWithMaxVotes = append(playersWithMaxVotes, playerID)
+			}
+		}
+
+		// Check if there's a tie
+		if len(playersWithMaxVotes) > 1 {
+			// There's a tie
+			const maxVoteRounds = 3
+			if game.VoteRound >= maxVoteRounds {
+				// Max rounds reached - go to results with a tie
+				game.Status = StatusFinished
+			} else {
+				// Re-vote: reset votes and increment round
+				game.Votes = make(map[string]string)
+				game.VoteRound++
+				game.Status = StatusVoting
+				// Broadcast tie event to trigger page refresh for all players
+				game.mu.Unlock()
+				game.broadcast("event: vote-tie\ndata: tie")
+				game.mu.Lock()
+			}
+		} else {
+			// Clear winner - move to results
+			game.Status = StatusFinished
+		}
 	}
 	game.mu.Unlock()
 
-	// Return updated game view or redirect to results
-	if allVoted {
-		w.Header().Set("HX-Redirect", "/results/"+roomCode)
-	} else {
-		http.Redirect(w, r, fmt.Sprintf("/game/%s/%s", roomCode, playerID), http.StatusSeeOther)
+	// Return the "voted" confirmation HTML
+	html := `<div class="card">
+		<p class="vote-status">✓ You voted</p>
+		<p class="text-muted">Waiting for other players to vote...</p>
+	</div>`
+
+	w.Header().Set("Content-Type", "text/html")
+	w.Write([]byte(html))
+}
+
+// handleVoteStatus returns the current vote count and redirects when voting is complete
+func handleVoteStatus(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/vote-status/"), "/")
+	if len(parts) != 2 {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
 	}
+	roomCode := parts[0]
+
+	gamesMutex.RLock()
+	game, exists := games[roomCode]
+	gamesMutex.RUnlock()
+
+	if !exists {
+		http.Error(w, "Game not found", http.StatusNotFound)
+		return
+	}
+
+	game.mu.RLock()
+	voteCount := len(game.Votes)
+	totalPlayers := len(game.Players)
+	status := game.Status
+	game.mu.RUnlock()
+
+	// If all players voted and there's a tie, voting continues - need to refresh
+	// If all players voted and no tie, redirect to results
+	if status == StatusFinished {
+		w.Header().Set("HX-Redirect", fmt.Sprintf("/results/%s", roomCode))
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// If we had all votes but status is still voting (tie happened), refresh the page
+	if voteCount == 0 && status == StatusVoting && r.Header.Get("HX-Request") == "true" {
+		// This could be right after a tie - check if we should refresh
+		// We'll send a refresh to reload the voting page with new round number
+		w.Header().Set("HX-Refresh", "true")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// Return just the vote count text
+	html := fmt.Sprintf(`<p class="ready-count">%d/%d players have voted</p>`, voteCount, totalPlayers)
+	w.Header().Set("Content-Type", "text/html")
+	w.Write([]byte(html))
 }
 
 // handleResults displays the game results
 func handleResults(w http.ResponseWriter, r *http.Request) {
 	roomCode := strings.TrimPrefix(r.URL.Path, "/results/")
+
+	// Validate room code exists
+	if roomCode == "" {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
 
 	gamesMutex.RLock()
 	game, exists := games[roomCode]
@@ -874,6 +1134,13 @@ func handleResults(w http.ResponseWriter, r *http.Request) {
 	if !exists {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
+	}
+
+	// Get player ID from cookie
+	playerID := ""
+	cookie, err := r.Cookie("player_id")
+	if err == nil {
+		playerID = cookie.Value
 	}
 
 	game.mu.RLock()
@@ -896,6 +1163,28 @@ func handleResults(w http.ResponseWriter, r *http.Request) {
 		votedCorrectly[voterID] = (suspectID == game.SpyID)
 	}
 
+	// Find who got the most votes
+	maxVotes := 0
+	var playersWithMaxVotes []string
+	for playerID, count := range voteCount {
+		if count > maxVotes {
+			maxVotes = count
+			playersWithMaxVotes = []string{playerID}
+		} else if count == maxVotes {
+			playersWithMaxVotes = append(playersWithMaxVotes, playerID)
+		}
+	}
+
+	// Determine outcome
+	mostVotedID := ""
+	innocentWon := false
+	isTie := len(playersWithMaxVotes) > 1
+
+	if !isTie && len(playersWithMaxVotes) == 1 {
+		mostVotedID = playersWithMaxVotes[0]
+		innocentWon = (mostVotedID == game.SpyID)
+	}
+
 	data := struct {
 		RoomCode       string
 		Location       *Location
@@ -904,6 +1193,12 @@ func handleResults(w http.ResponseWriter, r *http.Request) {
 		Votes          map[string]string
 		VoteCount      map[string]int
 		VotedCorrectly map[string]bool
+		MostVoted      string
+		InnocentWon    bool
+		IsTie          bool
+		VoteRounds     int
+		PlayerID       string
+		Host           string
 	}{
 		RoomCode:       game.RoomCode,
 		Location:       game.Location,
@@ -912,9 +1207,94 @@ func handleResults(w http.ResponseWriter, r *http.Request) {
 		Votes:          game.Votes,
 		VoteCount:      voteCount,
 		VotedCorrectly: votedCorrectly,
+		MostVoted:      mostVotedID,
+		InnocentWon:    innocentWon,
+		IsTie:          isTie,
+		VoteRounds:     game.VoteRound,
+		PlayerID:       playerID,
+		Host:           game.Host,
 	}
 
 	templates.ExecuteTemplate(w, "results.html", data)
+}
+
+// handleRestartGame starts a new game with the same players
+func handleRestartGame(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	roomCode := strings.TrimPrefix(r.URL.Path, "/restart/")
+
+	if roomCode == "" {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+
+	gamesMutex.RLock()
+	game, exists := games[roomCode]
+	gamesMutex.RUnlock()
+
+	if !exists {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+
+	// Get player ID from cookie
+	cookie, err := r.Cookie("player_id")
+	if err != nil {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	playerID := cookie.Value
+
+	game.mu.Lock()
+
+	// Reset player state
+	for _, p := range game.Players {
+		p.HasConfirmedRole = false
+		p.IsSpy = false
+		p.Challenge = ""
+	}
+
+	// Reset game state
+	game.ReadyForRole = make(map[string]bool)
+	game.ReadyToVote = make(map[string]bool)
+	game.Votes = make(map[string]string)
+	game.VoteRound = 0
+	game.StartTime = time.Time{}
+	game.FirstQuestioner = ""
+
+	// Assign new location
+	game.Location = &locations[rand.Intn(len(locations))]
+
+	// Assign new spy
+	spyIndex := rand.Intn(len(game.Players))
+	game.SpyID = game.Players[spyIndex].ID
+	game.Players[spyIndex].IsSpy = true
+
+	// Assign new challenges
+	shuffledChallenges := make([]string, len(challenges))
+	copy(shuffledChallenges, challenges)
+	rand.Shuffle(len(shuffledChallenges), func(i, j int) {
+		shuffledChallenges[i], shuffledChallenges[j] = shuffledChallenges[j], shuffledChallenges[i]
+	})
+
+	for i, player := range game.Players {
+		player.Challenge = shuffledChallenges[i%len(shuffledChallenges)]
+	}
+
+	// Start new game at ready check
+	game.Status = StatusReadyCheck
+	game.mu.Unlock()
+
+	// Broadcast update to all clients
+	game.broadcast("event: game-restarted\ndata: restarted")
+
+	// Redirect to game
+	w.Header().Set("HX-Redirect", fmt.Sprintf("/game/%s/%s", roomCode, playerID))
+	w.WriteHeader(http.StatusOK)
 }
 
 // Helper functions

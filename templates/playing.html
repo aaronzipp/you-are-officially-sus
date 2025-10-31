@@ -12,7 +12,7 @@
         <header>
             <div id="timer-display" class="timer-display" 
                  hx-get="/game/{{.RoomCode}}/{{.PlayerID}}" 
-                 hx-trigger="every 2s"
+                 hx-trigger="every 1s"
                  hx-swap="innerHTML"
                  hx-select="#timer-content">
                 <div id="timer-content">
@@ -23,6 +23,12 @@
         </header>
 
         <main>
+            {{if .FirstQuestioner}}
+            <div class="card">
+                <p class="first-questioner">{{range .Players}}{{if eq .ID $.FirstQuestioner}}{{.Name}}{{end}}{{end}} asks the first question!</p>
+            </div>
+            {{end}}
+
             <div class="card">
                 <div class="challenge-info">
                     <p class="label">Your Challenge:</p>
@@ -32,10 +38,10 @@
 
             <div class="card">
                 <div class="ready-section">
-                    <p id="ready-count" class="ready-count" 
-                       hx-get="/ready-status/{{.RoomCode}}/{{.PlayerID}}" 
-                       hx-trigger="every 2s"
-                       hx-swap="innerHTML">{{.ReadyCount}}/{{.TotalPlayers}} players ready to vote</p>
+                <p id="ready-count" class="ready-count" 
+                   hx-get="/ready-status/{{.RoomCode}}/{{.PlayerID}}" 
+                   hx-trigger="every 1s"
+                   hx-swap="innerHTML">{{.ReadyCount}}/{{.TotalPlayers}} players ready to vote</p>
                     <form hx-post="/ready/{{.RoomCode}}/{{.PlayerID}}" 
                           hx-target="#ready-button" 
                           hx-swap="outerHTML">

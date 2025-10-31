@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>You Are Sus - Spy Game</title>
+    <title>You Are Officially Sus - Spy Game</title>
     <link rel="stylesheet" href="/static/style.css">
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
 </head>
@@ -16,10 +16,11 @@
 
         <main>
             <div class="card">
-                <h2>Create a Room</h2>
-                <form hx-post="/create" hx-target="body">
-                    <input type="text" name="name" placeholder="Your name" required autofocus>
-                    <button type="submit" class="btn btn-primary">Create Room</button>
+                <h2>Join a Room</h2>
+                <form hx-post="/join" hx-target="body">
+                    <input type="text" name="code" placeholder="Room code" required maxlength="6" style="text-transform: uppercase;" autofocus>
+                    <input type="text" name="name" placeholder="Your name" required>
+                    <button type="submit" class="btn btn-secondary">Join Room</button>
                 </form>
             </div>
 
@@ -28,11 +29,10 @@
             </div>
 
             <div class="card">
-                <h2>Join a Room</h2>
-                <form hx-post="/join" hx-target="body">
-                    <input type="text" name="code" placeholder="Room code" required maxlength="6" style="text-transform: uppercase;">
+                <h2>Create a Room</h2>
+                <form hx-post="/create" hx-target="body">
                     <input type="text" name="name" placeholder="Your name" required>
-                    <button type="submit" class="btn btn-secondary">Join Room</button>
+                    <button type="submit" class="btn btn-primary">Create Room</button>
                 </form>
             </div>
         </main>

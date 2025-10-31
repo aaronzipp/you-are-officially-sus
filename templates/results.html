@@ -6,14 +6,58 @@
     <title>Results - You Are Sus</title>
     <link rel="stylesheet" href="/static/style.css">
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10/dist/ext/sse.js"></script>
+    <script>
+        // Listen for game restart and redirect all players
+        document.addEventListener('DOMContentLoaded', function() {
+            const cookies = document.cookie.split('; ');
+            const playerCookie = cookies.find(row => row.startsWith('player_id='));
+            const playerID = playerCookie ? playerCookie.split('=')[1] : '';
+            const roomCode = '{{.RoomCode}}';
+            
+            // Use HTMX event listener for SSE messages
+            document.body.addEventListener('htmx:sseMessage', function(evt) {
+                // Check if this is a game-restarted event
+                if (evt.detail && evt.detail.type === 'game-restarted') {
+                    window.location.href = `/game/${roomCode}/${playerID}`;
+                }
+            });
+        });
+    </script>
 </head>
-<body>
+<body hx-ext="sse" sse-connect="/lobby-updates/{{.RoomCode}}">
     <div class="container">
         <header>
             <h1>Game Results</h1>
+            {{if .IsTie}}
+            <p class="subtitle" style="color: var(--warning);">There was a tie after {{.VoteRounds}} round(s)</p>
+            {{end}}
+            {{if eq .PlayerID .Host}}
+            <div style="margin-top: 1rem;">
+                <form hx-post="/restart/{{.RoomCode}}" style="display: inline;">
+                    <button type="submit" class="btn btn-primary">New Game</button>
+                </form>
+            </div>
+            {{end}}
         </header>
 
         <main>
+            <!-- Hidden element to register game-restarted SSE listener -->
+            <div style="display:none;" sse-swap="game-restarted"></div>
+            
+            <div class="card results-card">
+                {{if .IsTie}}
+                <h2 style="color: var(--warning);">It's a Draw!</h2>
+                <p class="text-muted">No majority - the spy survives</p>
+                {{else if .InnocentWon}}
+                <h2 style="color: var(--innocent);">Innocents Win!</h2>
+                <p class="text-muted">The spy was correctly identified</p>
+                {{else}}
+                <h2 style="color: var(--spy);">Spy Wins!</h2>
+                <p class="text-muted">The spy was not identified</p>
+                {{end}}
+            </div>
+
             <div class="card results-card">
                 <h2>The Spy Was...</h2>
                 <p class="spy-reveal">{{.Spy.Name}}!</p>
@@ -25,12 +69,16 @@
             </div>
 
             <div class="card">
-                <h2>Voting Results</h2>
+                <h2>Final Vote Results</h2>
+                {{if gt .VoteRounds 1}}
+                <p class="text-muted" style="margin-bottom: 1rem;">Took {{.VoteRounds}} rounds to decide</p>
+                {{end}}
                 <ul class="vote-results">
                     {{range .Players}}
                     <li class="vote-result-item">
                         <strong>{{.Name}}</strong> received {{index $.VoteCount .ID}} vote(s)
                         {{if eq .ID $.Spy.ID}}<span class="badge">SPY</span>{{end}}
+                        {{if and (not $.IsTie) (eq .ID $.MostVoted)}}<span class="badge" style="background: var(--warning);">VOTED OUT</span>{{end}}
                     </li>
                     {{end}}
                 </ul>
@@ -68,10 +116,6 @@
                     </li>
                     {{end}}
                 </ul>
-            </div>
-
-            <div class="actions">
-                <a href="/" class="btn btn-primary">New Game</a>
             </div>
         </main>
     </div>
