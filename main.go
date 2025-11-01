@@ -414,7 +414,7 @@ func handleJoinLobby(w http.ResponseWriter, r *http.Request) {
 	lobbiesMux.RUnlock()
 
 	if !exists {
-		http.Error(w, "Room not found", http.StatusNotFound)
+		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
 
@@ -510,8 +510,17 @@ func handleSSE(w http.ResponseWriter, r *http.Request) {
 	lobbiesMux.RUnlock()
 
 	if !exists {
-		log.Printf("handleSSE: room %s not found", roomCode)
-		http.Error(w, "Room not found", http.StatusNotFound)
+		log.Printf("handleSSE: room %s not found, sending redirect event", roomCode)
+		// Set SSE headers
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+
+		// Send lobby-not-found event to trigger client-side redirect
+		fmt.Fprintf(w, "event: lobby-not-found\ndata: Room not found\n\n")
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
 		return
 	}
 

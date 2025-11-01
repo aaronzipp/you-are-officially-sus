@@ -22,6 +22,18 @@
             
             // Use HTMX event listener for SSE messages
             document.body.addEventListener('htmx:sseMessage', function(evt) {
+                // Check if this is a lobby-not-found event
+                if (evt.detail && evt.detail.type === 'lobby-not-found') {
+                    // Clean up SSE connection before navigation
+                    if (sseSource) {
+                        sseSource.close();
+                        sseSource = null;
+                        console.log('Lobby not found, redirecting to home');
+                    }
+                    setTimeout(() => {
+                        window.location.href = '/';
+                    }, 50);
+                }
                 // Check if this is a game-started event by checking the SSE event type
                 if (evt.detail && evt.detail.type === 'game-started') {
                     // Clean up SSE connection before navigation using the captured EventSource
@@ -63,6 +75,7 @@
 
         <main>
             <!-- Hidden element to register game-started SSE listener -->
+            <div style="display:none;" sse-swap="lobby-not-found"></div>
             <div style="display:none;" sse-swap="game-started"></div>
             
             <div id="player-list-card" class="card" sse-swap="player-update">
