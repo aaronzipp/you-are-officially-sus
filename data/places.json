@@ -8,22 +8,7 @@
   {
     "word": "concert venue",
     "categories": [
-      "nature / landscape",
-      "indoor cultural"
-    ]
-  },
-  {
-    "word": "ice rink",
-    "categories": [
-      "urban / public"
-    ]
-  },
-  {
-    "word": "market square",
-    "categories": [
-      "healthcare / wellness",
-      "law / security",
-      "food & drink"
+      "leisure"
     ]
   },
   {
@@ -33,24 +18,9 @@
     ]
   },
   {
-    "word": "escort agency",
-    "categories": [
-      "luxury / prestige"
-    ]
-  },
-  {
-    "word": "cultural center",
-    "categories": [
-      "healthcare / wellness",
-      "education / knowledge"
-    ]
-  },
-  {
     "word": "ferry",
     "categories": [
-      "misc everyday",
-      "luxury / prestige",
-      "healthcare / wellness"
+      "luxury"
     ]
   },
   {
@@ -87,13 +57,6 @@
     "categories": [
       "extreme / forbidden",
       "nsfw / adult"
-    ]
-  },
-  {
-    "word": "ferry dock",
-    "categories": [
-      "education / knowledge",
-      "food & drink"
     ]
   },
   {
@@ -145,18 +108,6 @@
     ]
   },
   {
-    "word": "black site",
-    "categories": [
-      "digital / fictional"
-    ]
-  },
-  {
-    "word": "factory floor",
-    "categories": [
-      "law / security"
-    ]
-  },
-  {
     "word": "jungle",
     "categories": [
       "luxury / prestige",
@@ -170,13 +121,6 @@
       "historical / tourist",
       "food & drink",
       "digital / fictional"
-    ]
-  },
-  {
-    "word": "taxi rank",
-    "categories": [
-      "nature / landscape",
-      "travel / accommodation"
     ]
   },
   {
@@ -202,13 +146,6 @@
     ]
   },
   {
-    "word": "exam hall",
-    "categories": [
-      "extreme / forbidden",
-      "work / institution"
-    ]
-  },
-  {
     "word": "penthouse",
     "categories": [
       "misc everyday"
@@ -219,13 +156,6 @@
     "categories": [
       "travel / accommodation",
       "urban / public"
-    ]
-  },
-  {
-    "word": "underground passage",
-    "categories": [
-      "food & drink",
-      "event / social"
     ]
   },
   {
@@ -251,18 +181,6 @@
     ]
   },
   {
-    "word": "opera house",
-    "categories": [
-      "nature / landscape"
-    ]
-  },
-  {
-    "word": "ice cream shop",
-    "categories": [
-      "luxury / prestige"
-    ]
-  },
-  {
     "word": "farmers market",
     "categories": [
       "outdoor leisure"
@@ -276,35 +194,6 @@
     ]
   },
   {
-    "word": "taxi stand",
-    "categories": [
-      "travel / accommodation",
-      "event / social"
-    ]
-  },
-  {
-    "word": "clinic",
-    "categories": [
-      "digital / fictional",
-      "outdoor leisure",
-      "residential / private"
-    ]
-  },
-  {
-    "word": "amphitheater",
-    "categories": [
-      "work / institution",
-      "nsfw / adult"
-    ]
-  },
-  {
-    "word": "tutoring center",
-    "categories": [
-      "digital / fictional",
-      "outdoor leisure"
-    ]
-  },
-  {
     "word": "post office",
     "categories": [
       "indoor cultural",
@@ -312,57 +201,10 @@
     ]
   },
   {
-    "word": "physiotherapy center",
-    "categories": [
-      "healthcare / wellness",
-      "extreme / forbidden"
-    ]
-  },
-  {
-    "word": "boutique",
-    "categories": [
-      "healthcare / wellness",
-      "food & drink"
-    ]
-  },
-  {
-    "word": "savanna",
-    "categories": [
-      "nsfw / adult",
-      "work / institution"
-    ]
-  },
-  {
-    "word": "fort",
-    "categories": [
-      "shopping / commercial",
-      "outdoor leisure"
-    ]
-  },
-  {
-    "word": "cruise terminal",
-    "categories": [
-      "food & drink",
-      "travel / accommodation"
-    ]
-  },
-  {
-    "word": "backyard",
-    "categories": [
-      "misc everyday"
-    ]
-  },
-  {
     "word": "restaurant",
     "categories": [
       "nsfw / adult",
       "outdoor leisure"
-    ]
-  },
-  {
-    "word": "guard post",
-    "categories": [
-      "work / institution"
     ]
   },
   {
@@ -376,14 +218,6 @@
     "categories": [
       "work / institution",
       "religious / spiritual"
-    ]
-  },
-  {
-    "word": "massage parlor",
-    "categories": [
-      "religious / spiritual",
-      "residential / private",
-      "food & drink"
     ]
   },
   {
@@ -456,13 +290,6 @@
     ]
   },
   {
-    "word": "craft store",
-    "categories": [
-      "law / security",
-      "travel / accommodation"
-    ]
-  },
-  {
     "word": "volcano",
     "categories": [
       "food & drink",
@@ -477,12 +304,6 @@
     ]
   },
   {
-    "word": "seminar room",
-    "categories": [
-      "nsfw / adult"
-    ]
-  },
-  {
     "word": "server room",
     "categories": [
       "residential / private",
@@ -490,28 +311,9 @@
     ]
   },
   {
-    "word": "pedestrian zone",
-    "categories": [
-      "travel / accommodation",
-      "healthcare / wellness"
-    ]
-  },
-  {
     "word": "hospital",
     "categories": [
       "residential / private"
-    ]
-  },
-  {
-    "word": "basement",
-    "categories": [
-      "residential / private"
-    ]
-  },
-  {
-    "word": "guesthouse",
-    "categories": [
-      "shopping / commercial"
     ]
   },
   {
@@ -569,25 +371,6 @@
     ]
   },
   {
-    "word": "radiation zone",
-    "categories": [
-      "food & drink"
-    ]
-  },
-  {
-    "word": "virtual concert",
-    "categories": [
-      "extreme / forbidden"
-    ]
-  },
-  {
-    "word": "riverwalk",
-    "categories": [
-      "industrial / production",
-      "law / security"
-    ]
-  },
-  {
     "word": "study room",
     "categories": [
       "outdoor leisure",
@@ -604,13 +387,6 @@
     "word": "police station",
     "categories": [
       "misc everyday"
-    ]
-  },
-  {
-    "word": "bnb",
-    "categories": [
-      "shopping / commercial",
-      "travel / accommodation"
     ]
   },
   {
@@ -648,28 +424,6 @@
     ]
   },
   {
-    "word": "metro terminal",
-    "categories": [
-      "law / security"
-    ]
-  },
-  {
-    "word": "streaming studio",
-    "categories": [
-      "education / knowledge",
-      "healthcare / wellness",
-      "extreme / forbidden"
-    ]
-  },
-  {
-    "word": "customs office",
-    "categories": [
-      "nature / landscape",
-      "transport",
-      "misc everyday"
-    ]
-  },
-  {
     "word": "lighthouse",
     "categories": [
       "historical / tourist",
@@ -690,14 +444,6 @@
     ]
   },
   {
-    "word": "vip lounge",
-    "categories": [
-      "nsfw / adult",
-      "healthcare / wellness",
-      "event / social"
-    ]
-  },
-  {
     "word": "game arcade",
     "categories": [
       "nsfw / adult",
@@ -712,26 +458,11 @@
     ]
   },
   {
-    "word": "riverwalk",
-    "categories": [
-      "nsfw / adult",
-      "industrial / production"
-    ]
-  },
-  {
     "word": "rainforest",
     "categories": [
       "law / security",
       "luxury / prestige",
       "travel / accommodation"
-    ]
-  },
-  {
-    "word": "historic square",
-    "categories": [
-      "food & drink",
-      "work / institution",
-      "education / knowledge"
     ]
   },
   {
@@ -751,76 +482,11 @@
     ]
   },
   {
-    "word": "historic bridge",
-    "categories": [
-      "education / knowledge",
-      "media / entertainment",
-      "travel / accommodation"
-    ]
-  },
-  {
-    "word": "pier",
-    "categories": [
-      "education / knowledge",
-      "work / institution"
-    ]
-  },
-  {
-    "word": "fairground",
-    "categories": [
-      "misc everyday",
-      "luxury / prestige",
-      "industrial / production"
-    ]
-  },
-  {
-    "word": "music festival",
-    "categories": [
-      "transport",
-      "travel / accommodation",
-      "media / entertainment"
-    ]
-  },
-  {
     "word": "crematorium",
     "categories": [
       "digital / fictional",
       "religious / spiritual",
       "law / security"
-    ]
-  },
-  {
-    "word": "luxury hotel",
-    "categories": [
-      "food & drink"
-    ]
-  },
-  {
-    "word": "laundromat",
-    "categories": [
-      "digital / fictional",
-      "food & drink"
-    ]
-  },
-  {
-    "word": "landmark",
-    "categories": [
-      "extreme / forbidden",
-      "religious / spiritual"
-    ]
-  },
-  {
-    "word": "market street",
-    "categories": [
-      "urban / public",
-      "nsfw / adult",
-      "law / security"
-    ]
-  },
-  {
-    "word": "market",
-    "categories": [
-      "work / institution"
     ]
   },
   {
@@ -843,13 +509,6 @@
     "word": "subway",
     "categories": [
       "outdoor leisure"
-    ]
-  },
-  {
-    "word": "bus stop shelter",
-    "categories": [
-      "work / institution",
-      "historical / tourist"
     ]
   },
   {
@@ -883,39 +542,9 @@
     ]
   },
   {
-    "word": "border checkpoint",
-    "categories": [
-      "food & drink",
-      "industrial / production",
-      "misc everyday"
-    ]
-  },
-  {
-    "word": "abandoned building",
-    "categories": [
-      "digital / fictional",
-      "historical / tourist",
-      "industrial / production"
-    ]
-  },
-  {
-    "word": "resort",
-    "categories": [
-      "event / social"
-    ]
-  },
-  {
     "word": "skatepark",
     "categories": [
       "law / security"
-    ]
-  },
-  {
-    "word": "mausoleum",
-    "categories": [
-      "healthcare / wellness",
-      "extreme / forbidden",
-      "religious / spiritual"
     ]
   },
   {
@@ -948,25 +577,11 @@
     ]
   },
   {
-    "word": "video game world",
-    "categories": [
-      "extreme / forbidden",
-      "media / entertainment"
-    ]
-  },
-  {
     "word": "bakery",
     "categories": [
       "work / institution",
       "shopping / commercial",
       "media / entertainment"
-    ]
-  },
-  {
-    "word": "cyber cafe",
-    "categories": [
-      "transport",
-      "urban / public"
     ]
   },
   {
@@ -982,40 +597,11 @@
     ]
   },
   {
-    "word": "mine shaft",
-    "categories": [
-      "event / social",
-      "travel / accommodation",
-      "historical / tourist"
-    ]
-  },
-  {
-    "word": "training center",
-    "categories": [
-      "residential / private"
-    ]
-  },
-  {
     "word": "castle",
     "categories": [
       "residential / private",
       "shopping / commercial",
       "healthcare / wellness"
-    ]
-  },
-  {
-    "word": "simulation chamber",
-    "categories": [
-      "digital / fictional",
-      "industrial / production",
-      "urban / public"
-    ]
-  },
-  {
-    "word": "five-star resort",
-    "categories": [
-      "education / knowledge",
-      "shopping / commercial"
     ]
   },
   {
@@ -1037,36 +623,10 @@
     ]
   },
   {
-    "word": "private island",
-    "categories": [
-      "extreme / forbidden"
-    ]
-  },
-  {
-    "word": "train sleeper car",
-    "categories": [
-      "luxury / prestige"
-    ]
-  },
-  {
     "word": "chapel",
     "categories": [
       "luxury / prestige",
       "religious / spiritual",
-      "urban / public"
-    ]
-  },
-  {
-    "word": "open-air stage",
-    "categories": [
-      "digital / fictional",
-      "law / security"
-    ]
-  },
-  {
-    "word": "wellness resort",
-    "categories": [
-      "residential / private",
       "urban / public"
     ]
   },
@@ -1119,38 +679,11 @@
     ]
   },
   {
-    "word": "metaverse lounge",
-    "categories": [
-      "nsfw / adult"
-    ]
-  },
-  {
-    "word": "embassy",
-    "categories": [
-      "event / social",
-      "industrial / production",
-      "education / knowledge"
-    ]
-  },
-  {
-    "word": "restricted area",
-    "categories": [
-      "historical / tourist"
-    ]
-  },
-  {
     "word": "office",
     "categories": [
       "indoor cultural",
       "transport",
       "misc everyday"
-    ]
-  },
-  {
-    "word": "research center",
-    "categories": [
-      "event / social",
-      "nsfw / adult"
     ]
   },
   {
@@ -1176,20 +709,6 @@
     ]
   },
   {
-    "word": "textile factory",
-    "categories": [
-      "transport",
-      "misc everyday",
-      "extreme / forbidden"
-    ]
-  },
-  {
-    "word": "archaeological site",
-    "categories": [
-      "media / entertainment"
-    ]
-  },
-  {
     "word": "balcony",
     "categories": [
       "luxury / prestige",
@@ -1210,18 +729,6 @@
     ]
   },
   {
-    "word": "monument",
-    "categories": [
-      "work / institution"
-    ]
-  },
-  {
-    "word": "love hotel",
-    "categories": [
-      "outdoor leisure"
-    ]
-  },
-  {
     "word": "church",
     "categories": [
       "work / institution",
@@ -1236,30 +743,9 @@
     ]
   },
   {
-    "word": "tram stop",
-    "categories": [
-      "nature / landscape",
-      "religious / spiritual"
-    ]
-  },
-  {
     "word": "airplane cabin",
     "categories": [
       "media / entertainment"
-    ]
-  },
-  {
-    "word": "city square",
-    "categories": [
-      "luxury / prestige"
-    ]
-  },
-  {
-    "word": "food court",
-    "categories": [
-      "media / entertainment",
-      "education / knowledge",
-      "nsfw / adult"
     ]
   },
   {
@@ -1277,14 +763,6 @@
     ]
   },
   {
-    "word": "banquet hall",
-    "categories": [
-      "religious / spiritual",
-      "travel / accommodation",
-      "education / knowledge"
-    ]
-  },
-  {
     "word": "flea market",
     "categories": [
       "misc everyday",
@@ -1297,26 +775,6 @@
     "categories": [
       "extreme / forbidden",
       "indoor cultural"
-    ]
-  },
-  {
-    "word": "observation deck",
-    "categories": [
-      "event / social"
-    ]
-  },
-  {
-    "word": "convention center",
-    "categories": [
-      "food & drink"
-    ]
-  },
-  {
-    "word": "obelisk",
-    "categories": [
-      "travel / accommodation",
-      "work / institution",
-      "historical / tourist"
     ]
   },
   {
@@ -1354,27 +812,6 @@
     ]
   },
   {
-    "word": "press room",
-    "categories": [
-      "industrial / production",
-      "nature / landscape"
-    ]
-  },
-  {
-    "word": "hiking trail",
-    "categories": [
-      "extreme / forbidden",
-      "nsfw / adult"
-    ]
-  },
-  {
-    "word": "sound stage",
-    "categories": [
-      "luxury / prestige",
-      "event / social"
-    ]
-  },
-  {
     "word": "bathroom",
     "categories": [
       "nsfw / adult",
@@ -1383,54 +820,11 @@
     ]
   },
   {
-    "word": "highway rest stop",
-    "categories": [
-      "law / security",
-      "urban / public",
-      "misc everyday"
-    ]
-  },
-  {
-    "word": "dockyard",
-    "categories": [
-      "shopping / commercial",
-      "media / entertainment"
-    ]
-  },
-  {
-    "word": "parking deck",
-    "categories": [
-      "digital / fictional",
-      "extreme / forbidden",
-      "healthcare / wellness"
-    ]
-  },
-  {
-    "word": "arcade",
-    "categories": [
-      "residential / private"
-    ]
-  },
-  {
     "word": "prison",
     "categories": [
       "work / institution",
       "outdoor leisure",
       "media / entertainment"
-    ]
-  },
-  {
-    "word": "travel agency",
-    "categories": [
-      "historical / tourist",
-      "extreme / forbidden",
-      "food & drink"
-    ]
-  },
-  {
-    "word": "alley",
-    "categories": [
-      "religious / spiritual"
     ]
   },
   {
@@ -1443,32 +837,6 @@
     "word": "kitchen",
     "categories": [
       "transport"
-    ]
-  },
-  {
-    "word": "clothing store",
-    "categories": [
-      "luxury / prestige"
-    ]
-  },
-  {
-    "word": "meadow",
-    "categories": [
-      "media / entertainment"
-    ]
-  },
-  {
-    "word": "eye clinic",
-    "categories": [
-      "nsfw / adult",
-      "religious / spiritual"
-    ]
-  },
-  {
-    "word": "house",
-    "categories": [
-      "outdoor leisure",
-      "indoor cultural"
     ]
   },
   {
@@ -1485,13 +853,6 @@
     ]
   },
   {
-    "word": "campground",
-    "categories": [
-      "travel / accommodation",
-      "media / entertainment"
-    ]
-  },
-  {
     "word": "bookstore",
     "categories": [
       "historical / tourist"
@@ -1503,21 +864,6 @@
       "work / institution",
       "luxury / prestige",
       "transport"
-    ]
-  },
-  {
-    "word": "camping site",
-    "categories": [
-      "residential / private",
-      "shopping / commercial"
-    ]
-  },
-  {
-    "word": "oasis",
-    "categories": [
-      "education / knowledge",
-      "digital / fictional",
-      "media / entertainment"
     ]
   },
   {
@@ -1547,13 +893,6 @@
     ]
   },
   {
-    "word": "drive-in theater",
-    "categories": [
-      "event / social",
-      "food & drink"
-    ]
-  },
-  {
     "word": "pharmacy",
     "categories": [
       "nature / landscape"
@@ -1565,14 +904,6 @@
       "industrial / production",
       "misc everyday",
       "outdoor leisure"
-    ]
-  },
-  {
-    "word": "assembly line",
-    "categories": [
-      "nsfw / adult",
-      "extreme / forbidden",
-      "historical / tourist"
     ]
   },
   {
@@ -1589,14 +920,6 @@
     ]
   },
   {
-    "word": "community center",
-    "categories": [
-      "digital / fictional",
-      "historical / tourist",
-      "nature / landscape"
-    ]
-  },
-  {
     "word": "bus stop",
     "categories": [
       "luxury / prestige",
@@ -1610,19 +933,6 @@
       "event / social",
       "transport",
       "extreme / forbidden"
-    ]
-  },
-  {
-    "word": "AI lab",
-    "categories": [
-      "outdoor leisure"
-    ]
-  },
-  {
-    "word": "printing press",
-    "categories": [
-      "travel / accommodation",
-      "urban / public"
     ]
   },
   {
@@ -1653,13 +963,6 @@
     ]
   },
   {
-    "word": "chemical plant",
-    "categories": [
-      "misc everyday",
-      "education / knowledge"
-    ]
-  },
-  {
     "word": "living room",
     "categories": [
       "residential / private",
@@ -1667,21 +970,9 @@
     ]
   },
   {
-    "word": "adult theater",
-    "categories": [
-      "law / security"
-    ]
-  },
-  {
     "word": "data center",
     "categories": [
       "industrial / production"
-    ]
-  },
-  {
-    "word": "metro entrance",
-    "categories": [
-      "residential / private"
     ]
   },
   {
@@ -1692,31 +983,10 @@
     ]
   },
   {
-    "word": "guest room",
-    "categories": [
-      "nature / landscape",
-      "food & drink"
-    ]
-  },
-  {
-    "word": "private club",
-    "categories": [
-      "historical / tourist",
-      "nsfw / adult",
-      "urban / public"
-    ]
-  },
-  {
     "word": "courtroom",
     "categories": [
       "residential / private",
       "transport"
-    ]
-  },
-  {
-    "word": "home office",
-    "categories": [
-      "event / social"
     ]
   },
   {
@@ -1728,25 +998,9 @@
     ]
   },
   {
-    "word": "sidewalk cafe",
-    "categories": [
-      "digital / fictional",
-      "nature / landscape",
-      "residential / private"
-    ]
-  },
-  {
     "word": "recording booth",
     "categories": [
       "work / institution"
-    ]
-  },
-  {
-    "word": "university lab",
-    "categories": [
-      "work / institution",
-      "religious / spiritual",
-      "historical / tourist"
     ]
   },
   {
@@ -1754,13 +1008,6 @@
     "categories": [
       "nsfw / adult",
       "education / knowledge"
-    ]
-  },
-  {
-    "word": "medical lab",
-    "categories": [
-      "historical / tourist",
-      "indoor cultural"
     ]
   },
   {
@@ -1801,13 +1048,6 @@
     ]
   },
   {
-    "word": "heritage site",
-    "categories": [
-      "misc everyday",
-      "transport"
-    ]
-  },
-  {
     "word": "embassy",
     "categories": [
       "extreme / forbidden",
@@ -1824,70 +1064,10 @@
     ]
   },
   {
-    "word": "hacker basement",
-    "categories": [
-      "education / knowledge"
-    ]
-  },
-  {
-    "word": "detention center",
-    "categories": [
-      "industrial / production",
-      "transport"
-    ]
-  },
-  {
-    "word": "valley",
-    "categories": [
-      "food & drink"
-    ]
-  },
-  {
     "word": "grocery store",
     "categories": [
       "transport",
       "indoor cultural"
-    ]
-  },
-  {
-    "word": "school library",
-    "categories": [
-      "food & drink",
-      "law / security",
-      "nature / landscape"
-    ]
-  },
-  {
-    "word": "electronics shop",
-    "categories": [
-      "industrial / production",
-      "transport"
-    ]
-  },
-  {
-    "word": "secret lab",
-    "categories": [
-      "food & drink"
-    ]
-  },
-  {
-    "word": "cathedral",
-    "categories": [
-      "extreme / forbidden",
-      "transport"
-    ]
-  },
-  {
-    "word": "steel mill",
-    "categories": [
-      "residential / private",
-      "education / knowledge"
-    ]
-  },
-  {
-    "word": "movie set",
-    "categories": [
-      "urban / public"
     ]
   },
   {
@@ -1898,13 +1078,6 @@
     ]
   },
   {
-    "word": "bicycle station",
-    "categories": [
-      "industrial / production",
-      "religious / spiritual"
-    ]
-  },
-  {
     "word": "beach",
     "categories": [
       "shopping / commercial",
@@ -1912,124 +1085,9 @@
     ]
   },
   {
-    "word": "VR arena",
-    "categories": [
-      "education / knowledge",
-      "nsfw / adult",
-      "digital / fictional"
-    ]
-  },
-  {
-    "word": "arena",
-    "categories": [
-      "shopping / commercial",
-      "misc everyday",
-      "education / knowledge"
-    ]
-  },
-  {
-    "word": "holiday villa",
-    "categories": [
-      "healthcare / wellness",
-      "luxury / prestige",
-      "nsfw / adult"
-    ]
-  },
-  {
-    "word": "diner",
-    "categories": [
-      "law / security",
-      "nature / landscape"
-    ]
-  },
-  {
-    "word": "warehouse",
-    "categories": [
-      "digital / fictional",
-      "luxury / prestige"
-    ]
-  },
-  {
-    "word": "police HQ",
-    "categories": [
-      "misc everyday",
-      "event / social"
-    ]
-  },
-  {
-    "word": "fashion show",
-    "categories": [
-      "digital / fictional"
-    ]
-  },
-  {
-    "word": "adult cinema",
-    "categories": [
-      "education / knowledge",
-      "luxury / prestige"
-    ]
-  },
-  {
-    "word": "luxury spa",
-    "categories": [
-      "nature / landscape",
-      "luxury / prestige"
-    ]
-  },
-  {
-    "word": "historic tower",
-    "categories": [
-      "indoor cultural",
-      "education / knowledge",
-      "outdoor leisure"
-    ]
-  },
-  {
-    "word": "shipyard",
-    "categories": [
-      "residential / private"
-    ]
-  },
-  {
     "word": "ski resort",
     "categories": [
       "food & drink",
-      "luxury / prestige"
-    ]
-  },
-  {
-    "word": "checkpoint",
-    "categories": [
-      "work / institution",
-      "food & drink"
-    ]
-  },
-  {
-    "word": "cellar",
-    "categories": [
-      "food & drink",
-      "healthcare / wellness",
-      "urban / public"
-    ]
-  },
-  {
-    "word": "mall",
-    "categories": [
-      "historical / tourist",
-      "luxury / prestige",
-      "outdoor leisure"
-    ]
-  },
-  {
-    "word": "forest",
-    "categories": [
-      "indoor cultural",
-      "transport"
-    ]
-  },
-  {
-    "word": "exhibition center",
-    "categories": [
       "luxury / prestige"
     ]
   },
@@ -2041,151 +1099,9 @@
     ]
   },
   {
-    "word": "conference hall",
-    "categories": [
-      "extreme / forbidden"
-    ]
-  },
-  {
-    "word": "shrine",
-    "categories": [
-      "luxury / prestige",
-      "work / institution"
-    ]
-  },
-  {
     "word": "graveyard",
     "categories": [
       "residential / private"
-    ]
-  },
-  {
-    "word": "factory",
-    "categories": [
-      "nature / landscape"
-    ]
-  },
-  {
-    "word": "pet store",
-    "categories": [
-      "food & drink"
-    ]
-  },
-  {
-    "word": "holy site",
-    "categories": [
-      "food & drink",
-      "misc everyday",
-      "shopping / commercial"
-    ]
-  },
-  {
-    "word": "temple",
-    "categories": [
-      "shopping / commercial",
-      "work / institution"
-    ]
-  },
-  {
-    "word": "reef",
-    "categories": [
-      "shopping / commercial",
-      "indoor cultural",
-      "travel / accommodation"
-    ]
-  },
-  {
-    "word": "industrial park",
-    "categories": [
-      "industrial / production",
-      "food & drink",
-      "media / entertainment"
-    ]
-  },
-  {
-    "word": "rooftop bar",
-    "categories": [
-      "event / social"
-    ]
-  },
-  {
-    "word": "oil refinery",
-    "categories": [
-      "urban / public",
-      "indoor cultural",
-      "residential / private"
-    ]
-  },
-  {
-    "word": "science center",
-    "categories": [
-      "luxury / prestige",
-      "extreme / forbidden"
-    ]
-  },
-  {
-    "word": "private jet",
-    "categories": [
-      "religious / spiritual",
-      "luxury / prestige"
-    ]
-  },
-  {
-    "word": "caravan park",
-    "categories": [
-      "nsfw / adult",
-      "digital / fictional",
-      "law / security"
-    ]
-  },
-  {
-    "word": "parking garage",
-    "categories": [
-      "historical / tourist",
-      "event / social"
-    ]
-  },
-  {
-    "word": "canyon",
-    "categories": [
-      "healthcare / wellness",
-      "travel / accommodation"
-    ]
-  },
-  {
-    "word": "garden",
-    "categories": [
-      "luxury / prestige",
-      "travel / accommodation"
-    ]
-  },
-  {
-    "word": "monastery",
-    "categories": [
-      "religious / spiritual"
-    ]
-  },
-  {
-    "word": "language school",
-    "categories": [
-      "nsfw / adult",
-      "misc everyday",
-      "urban / public"
-    ]
-  },
-  {
-    "word": "quarry",
-    "categories": [
-      "transport",
-      "luxury / prestige"
-    ]
-  },
-  {
-    "word": "history museum",
-    "categories": [
-      "misc everyday",
-      "residential / private",
-      "digital / fictional"
     ]
   },
   {
@@ -2194,140 +1110,6 @@
       "industrial / production",
       "digital / fictional",
       "transport"
-    ]
-  },
-  {
-    "word": "bus terminal",
-    "categories": [
-      "religious / spiritual",
-      "residential / private"
-    ]
-  },
-  {
-    "word": "old town",
-    "categories": [
-      "media / entertainment",
-      "extreme / forbidden"
-    ]
-  },
-  {
-    "word": "toy store",
-    "categories": [
-      "education / knowledge",
-      "work / institution",
-      "food & drink"
-    ]
-  },
-  {
-    "word": "bank",
-    "categories": [
-      "outdoor leisure",
-      "urban / public",
-      "luxury / prestige"
-    ]
-  },
-  {
-    "word": "festival ground",
-    "categories": [
-      "historical / tourist",
-      "nsfw / adult",
-      "digital / fictional"
-    ]
-  },
-  {
-    "word": "laboratory",
-    "categories": [
-      "nsfw / adult",
-      "historical / tourist"
-    ]
-  },
-  {
-    "word": "public restroom",
-    "categories": [
-      "law / security"
-    ]
-  },
-  {
-    "word": "swimming pool",
-    "categories": [
-      "media / entertainment",
-      "healthcare / wellness",
-      "nature / landscape"
-    ]
-  },
-  {
-    "word": "cinema lobby",
-    "categories": [
-      "urban / public",
-      "historical / tourist"
-    ]
-  },
-  {
-    "word": "space station",
-    "categories": [
-      "extreme / forbidden",
-      "misc everyday"
-    ]
-  },
-  {
-    "word": "street food stall",
-    "categories": [
-      "digital / fictional",
-      "event / social"
-    ]
-  },
-  {
-    "word": "harbor",
-    "categories": [
-      "extreme / forbidden"
-    ]
-  },
-  {
-    "word": "rest area",
-    "categories": [
-      "extreme / forbidden"
-    ]
-  },
-  {
-    "word": "war memorial",
-    "categories": [
-      "residential / private",
-      "nsfw / adult",
-      "travel / accommodation"
-    ]
-  },
-  {
-    "word": "art museum",
-    "categories": [
-      "event / social"
-    ]
-  },
-  {
-    "word": "pier",
-    "categories": [
-      "media / entertainment",
-      "healthcare / wellness"
-    ]
-  },
-  {
-    "word": "glacier",
-    "categories": [
-      "urban / public",
-      "nature / landscape",
-      "religious / spiritual"
-    ]
-  },
-  {
-    "word": "hardware store",
-    "categories": [
-      "law / security",
-      "healthcare / wellness"
-    ]
-  },
-  {
-    "word": "editing suite",
-    "categories": [
-      "nsfw / adult"
     ]
   }
 ]

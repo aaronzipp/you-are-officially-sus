@@ -3,48 +3,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Results - You Are Sus</title>
+    <title>Results - You Are Officially Sus</title>
     <link rel="stylesheet" href="/static/style.css">
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://unpkg.com/htmx.org@1.9.10/dist/ext/sse.js"></script>
     <script>
-        // Listen for game restart and redirect all players
+        // Listen for game restart and redirect back to lobby
         document.addEventListener('DOMContentLoaded', function() {
-            const cookies = document.cookie.split('; ');
-            const playerCookie = cookies.find(row => row.startsWith('player_id='));
-            const playerID = playerCookie ? playerCookie.split('=')[1] : '';
+            const playerID = '{{.PlayerID}}';
             const roomCode = '{{.RoomCode}}';
             
-            // Use HTMX event listener for SSE messages
             document.body.addEventListener('htmx:sseMessage', function(evt) {
-                // Check if this is a game-restarted event
-                if (evt.detail && evt.detail.type === 'game-restarted') {
+                if (evt.detail && evt.detail.type === 'game-started') {
                     window.location.href = `/game/${roomCode}/${playerID}`;
+                }
+                if (evt.detail && evt.detail.type === 'lobby-closed') {
+                    window.location.href = '/';
                 }
             });
         });
     </script>
 </head>
-<body hx-ext="sse" sse-connect="/lobby-updates/{{.RoomCode}}">
+<body hx-ext="sse" sse-connect="/sse/{{.RoomCode}}/{{.PlayerID}}">
     <div class="container">
         <header>
             <h1>Game Results</h1>
             {{if .IsTie}}
             <p class="subtitle" style="color: var(--warning);">There was a tie after {{.VoteRounds}} round(s)</p>
             {{end}}
-            {{if eq .PlayerID .Host}}
+            {{if .IsHost}}
             <div style="margin-top: 1rem;">
-                <form hx-post="/restart/{{.RoomCode}}" style="display: inline;">
-                    <button type="submit" class="btn btn-primary">New Game</button>
+                <form hx-post="/restart-game/{{.RoomCode}}" style="display: inline; margin-right: 1rem;">
+                    <button type="submit" class="btn btn-primary">Play Again</button>
+                </form>
+                <form hx-post="/close-lobby/{{.RoomCode}}" style="display: inline;">
+                    <button type="submit" class="btn btn-secondary">Close Lobby</button>
                 </form>
             </div>
             {{end}}
         </header>
 
         <main>
-            <!-- Hidden element to register game-restarted SSE listener -->
-            <div style="display:none;" sse-swap="game-restarted"></div>
-            
             <div class="card results-card">
                 {{if .IsTie}}
                 <h2 style="color: var(--warning);">It's a Draw!</h2>
@@ -112,7 +111,7 @@
                 <ul class="challenge-list">
                     {{range .Players}}
                     <li class="challenge-item">
-                        <strong>{{.Name}}:</strong> "{{.Challenge}}"
+                        <strong>{{.Name}}:</strong> "{{index $.Challenges .ID}}"
                     </li>
                     {{end}}
                 </ul>

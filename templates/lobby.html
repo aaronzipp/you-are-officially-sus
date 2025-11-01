@@ -3,16 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lobby - You Are Sus</title>
+    <title>Lobby - You Are Officially Sus</title>
     <link rel="stylesheet" href="/static/style.css">
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://unpkg.com/htmx.org@1.9.10/dist/ext/sse.js"></script>
     <script>
         // Listen for game start and redirect all players
         document.addEventListener('DOMContentLoaded', function() {
-            const cookies = document.cookie.split('; ');
-            const playerCookie = cookies.find(row => row.startsWith('player_id='));
-            const playerID = playerCookie ? playerCookie.split('=')[1] : '';
+            const playerID = '{{.PlayerID}}';
             const roomCode = '{{.RoomCode}}';
             
             // Use HTMX event listener for SSE messages
@@ -21,11 +19,15 @@
                 if (evt.detail && evt.detail.type === 'game-started') {
                     window.location.href = `/game/${roomCode}/${playerID}`;
                 }
+                // Check if this is a lobby-closed event
+                if (evt.detail && evt.detail.type === 'lobby-closed') {
+                    window.location.href = '/';
+                }
             });
         });
     </script>
 </head>
-<body hx-ext="sse" sse-connect="/lobby-updates/{{.RoomCode}}">
+<body hx-ext="sse" sse-connect="/sse/{{.RoomCode}}/{{.PlayerID}}">
     <div class="container">
         <header>
             <h1>Room Lobby</h1>
@@ -39,7 +41,7 @@
             <!-- Hidden element to register game-started SSE listener -->
             <div style="display:none;" sse-swap="game-started"></div>
             
-            <div id="player-list-card" class="card" sse-swap="players">
+            <div id="player-list-card" class="card" sse-swap="player-update">
                 <h2>Players ({{len .Players}})</h2>
                 <ul class="player-list">
                     {{range .Players}}
@@ -50,19 +52,53 @@
                 </ul>
             </div>
 
+            {{if gt (len .Scores) 0}}
+            <div id="score-card" class="card" sse-swap="score-update">
+                <h2>Scores</h2>
+                <table class="score-table">
+                    <thead>
+                        <tr>
+                            <th>Player</th>
+                            <th>Wins</th>
+                            <th>Losses</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{range .Players}}
+                        {{$score := index $.Scores .ID}}
+                        <tr>
+                            <td>{{.Name}}</td>
+                            <td>{{if $score}}{{$score.GamesWon}}{{else}}0{{end}}</td>
+                            <td>{{if $score}}{{$score.GamesLost}}{{else}}0{{end}}</td>
+                        </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </div>
+            {{else}}
+            <div id="score-card" class="card" sse-swap="score-update" style="display:none;">
+            </div>
+            {{end}}
+
             {{if .IsHost}}
-            <div id="host-controls" class="card" sse-swap="controls">
+            <div id="host-controls" class="card" sse-swap="controls-update">
                 {{if ge (len .Players) 3}}
-                <form hx-post="/start/{{.RoomCode}}">
+                <form hx-post="/start-game/{{.RoomCode}}">
                     <button type="submit" class="btn btn-primary">Start Game</button>
+                </form>
+                <form hx-post="/close-lobby/{{.RoomCode}}" style="margin-top: 1rem;">
+                    <button type="submit" class="btn btn-secondary">Close Lobby</button>
                 </form>
                 {{else}}
                 <p>Waiting for players to join...</p>
                 <p class="text-muted">Need at least 3 players to start</p>
+                <form hx-post="/close-lobby/{{.RoomCode}}" style="margin-top: 1rem;">
+                    <button type="submit" class="btn btn-secondary">Close Lobby</button>
+                </form>
                 {{end}}
             </div>
             {{else}}
-            <div id="host-controls" class="card" sse-swap="controls">
+            <div id="host-controls" class="card" sse-swap="controls-update">
                 <p>Waiting for host to start the game...</p>
             </div>
             {{end}}

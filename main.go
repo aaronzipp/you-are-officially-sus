@@ -33,37 +33,61 @@ type Location struct {
 	Categories []string `json:"categories"`
 }
 
-// Player represents a game player
+// SSEMessage represents a message sent via Server-Sent Events
+type SSEMessage struct {
+	Event string // Event type (e.g., "player-update", "phase-change")
+	Data  string // HTML content or data to send
+}
+
+// PlayerScore tracks persistent score across games
+type PlayerScore struct {
+	GamesWon  int
+	GamesLost int
+}
+
+// Player represents a player in the lobby
 type Player struct {
-	ID               string
-	Name             string
+	ID   string
+	Name string
+}
+
+// GamePlayerInfo contains game-specific player information
+type GamePlayerInfo struct {
 	Challenge        string
 	HasConfirmedRole bool
 	IsSpy            bool
 }
 
-// Game represents a game room
+// Lobby represents a persistent game lobby
+type Lobby struct {
+	Code        string
+	Host        string
+	Players     map[string]*Player      // playerID -> Player
+	Scores      map[string]*PlayerScore // playerID -> PlayerScore (persistent)
+	CurrentGame *Game                   // nil when in lobby
+	mu          sync.RWMutex
+	sseClients  map[chan SSEMessage]string // channel -> playerID
+}
+
+// Game represents an active game session (ephemeral)
 type Game struct {
-	RoomCode        string
-	Host            string
-	Players         []*Player
-	Status          GameStatus
+	Lobby           *Lobby
 	Location        *Location
 	SpyID           string
-	FirstQuestioner string // Player ID of who asks the first question
+	FirstQuestioner string                     // Player ID of who asks the first question
+	PlayerInfo      map[string]*GamePlayerInfo // game-specific player data
+	Status          GameStatus
 	StartTime       time.Time
-	ReadyForRole    map[string]bool // Track players ready to see their role
-	ReadyToVote     map[string]bool
+	ReadyStates     map[string]bool // unified for all ready phases
 	Votes           map[string]string
-	VoteRound       int // Track voting rounds for tie-breaking
-	mu              sync.RWMutex
-	clients         map[chan string]string // channel -> playerID
+	VoteRound       int       // Track voting rounds for tie-breaking
+	timerDone       chan bool // Signal to stop timer goroutine
 }
 
 // Global storage
 var (
-	games      = make(map[string]*Game)
-	gamesMutex sync.RWMutex
+	lobbies    = make(map[string]*Lobby)
+	lobbiesMux sync.RWMutex
 	locations  []Location
 	challenges []string
 	templates  *template.Template
@@ -90,21 +114,17 @@ func main() {
 
 	// Routes
 	http.HandleFunc("/", handleIndex)
-	http.HandleFunc("/create", handleCreateRoom)
-	http.HandleFunc("/join", handleJoinRoom)
+	http.HandleFunc("/create", handleCreateLobby)
+	http.HandleFunc("/join", handleJoinLobby)
 	http.HandleFunc("/lobby/", handleLobby)
-	http.HandleFunc("/lobby-updates/", handleLobbySSE)
-	http.HandleFunc("/start/", handleStartGame)
+	http.HandleFunc("/sse/", handleSSE)
+	http.HandleFunc("/start-game/", handleStartGame)
 	http.HandleFunc("/game/", handleGame)
-	http.HandleFunc("/ready-for-role/", handleReadyForRole)
-	http.HandleFunc("/ready-for-role-status/", handleReadyForRoleStatus)
-	http.HandleFunc("/confirm/", handleConfirmRole)
-	http.HandleFunc("/ready/", handleToggleReady)
-	http.HandleFunc("/ready-status/", handleReadyStatus)
-	http.HandleFunc("/vote/", handleVote)
-	http.HandleFunc("/vote-status/", handleVoteStatus)
 	http.HandleFunc("/results/", handleResults)
-	http.HandleFunc("/restart/", handleRestartGame)
+	http.HandleFunc("/ready/", handleReady)
+	http.HandleFunc("/vote/", handleVote)
+	http.HandleFunc("/restart-game/", handleRestartGame)
+	http.HandleFunc("/close-lobby/", handleCloseLobby)
 
 	// Static files
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
@@ -138,40 +158,70 @@ func loadData() error {
 	return nil
 }
 
-// addClient adds a new SSE client to the game
-func (g *Game) addClient(client chan string, playerID string) {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	if g.clients == nil {
-		g.clients = make(map[chan string]string)
+// ===== SSE Methods =====
+
+// addSSEClient adds a new SSE client to the lobby
+func (l *Lobby) addSSEClient(client chan SSEMessage, playerID string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.sseClients == nil {
+		l.sseClients = make(map[chan SSEMessage]string)
 	}
-	g.clients[client] = playerID
+	l.sseClients[client] = playerID
 }
 
-// removeClient removes an SSE client from the game
-func (g *Game) removeClient(client chan string) {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	delete(g.clients, client)
+// removeSSEClient removes an SSE client from the lobby
+func (l *Lobby) removeSSEClient(client chan SSEMessage) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	delete(l.sseClients, client)
 	close(client)
+	log.Printf("removeSSEClient: client removed, now have %d total clients", len(l.sseClients))
 }
 
-// broadcast sends a message to all connected SSE clients
-func (g *Game) broadcast(message string) {
-	g.mu.RLock()
-
+// broadcastSSE sends a message to all connected SSE clients
+func (l *Lobby) broadcastSSE(event, data string) {
+	l.mu.RLock()
 	// Collect all client channels while holding the lock
-	var clients []chan string
-	for client := range g.clients {
+	var clients []chan SSEMessage
+	for client := range l.sseClients {
 		clients = append(clients, client)
 	}
+	clientCount := len(clients)
+	l.mu.RUnlock()
 
-	g.mu.RUnlock()
+	log.Printf("broadcastSSE: event=%s data=%s to %d clients", event, data, clientCount)
 
 	// Send messages WITHOUT holding the lock
+	msg := SSEMessage{Event: event, Data: data}
+	successCount := 0
 	for _, client := range clients {
 		select {
-		case client <- message:
+		case client <- msg:
+			successCount++
+		case <-time.After(1 * time.Second):
+			log.Printf("broadcastSSE: timeout sending to client")
+		}
+	}
+	log.Printf("broadcastSSE: sent to %d/%d clients successfully", successCount, clientCount)
+}
+
+// broadcastPersonalizedControls sends personalized control updates to each client
+func (l *Lobby) broadcastPersonalizedControls() {
+	l.mu.RLock()
+	// Collect all client channels and their player IDs while holding the lock
+	clientMap := make(map[chan SSEMessage]string)
+	for client, playerID := range l.sseClients {
+		clientMap[client] = playerID
+	}
+	l.mu.RUnlock()
+
+	// Send personalized messages WITHOUT holding the lock
+	for client, playerID := range clientMap {
+		controlsHTML := l.renderHostControls(playerID)
+		msg := SSEMessage{Event: "controls-update", Data: controlsHTML}
+		select {
+		case client <- msg:
 			// Message sent successfully
 		case <-time.After(1 * time.Second):
 			// Timeout - skip this client to avoid blocking
@@ -179,45 +229,55 @@ func (g *Game) broadcast(message string) {
 	}
 }
 
-// broadcastPersonalized sends personalized updates to all connected SSE clients
-func (g *Game) broadcastPersonalized() {
-	g.mu.RLock()
+// ===== HTML Renderers =====
 
-	// Collect data we need while holding the lock
-	playerListHTML := renderPlayerList(g.Players)
+// renderPlayerList generates HTML for the player list
+func (l *Lobby) renderPlayerList() string {
+	html := fmt.Sprintf(`<h2>Players (%d)</h2><ul class="player-list">`, len(l.Players))
+	for _, p := range l.Players {
+		html += fmt.Sprintf(`<li class="player-item"><span class="player-name">%s</span></li>`, p.Name)
+	}
+	html += `</ul>`
+	return html
+}
 
-	// Build a list of messages to send to each client
-	type clientMessage struct {
-		client   chan string
-		messages []string
+// renderHostControls generates HTML for host controls
+func (l *Lobby) renderHostControls(playerID string) string {
+	isHost := l.Host == playerID
+	playerCount := len(l.Players)
+	inGame := l.CurrentGame != nil
+
+	if inGame {
+		return "" // No controls during game
 	}
 
-	var messagesToSend []clientMessage
-	for client, clientPlayerID := range g.clients {
-		hostControlsHTML := renderHostControls(g, clientPlayerID)
-		messagesToSend = append(messagesToSend, clientMessage{
-			client: client,
-			messages: []string{
-				fmt.Sprintf("event: players\ndata: %s", playerListHTML),
-				fmt.Sprintf("event: controls\ndata: %s", hostControlsHTML),
-			},
-		})
-	}
-
-	g.mu.RUnlock()
-
-	// Now send messages WITHOUT holding the lock
-	for _, cm := range messagesToSend {
-		for _, msg := range cm.messages {
-			select {
-			case cm.client <- msg:
-				// Message sent successfully
-			case <-time.After(1 * time.Second):
-				// Timeout - skip this client to avoid blocking
-			}
+	if isHost {
+		if playerCount >= 3 {
+			return fmt.Sprintf(`<form hx-post="/start-game/%s"><button type="submit" class="btn btn-primary">Start Game</button></form><form hx-post="/close-lobby/%s" style="margin-top: 1rem;"><button type="submit" class="btn btn-secondary">Close Lobby</button></form>`, l.Code, l.Code)
+		} else {
+			return fmt.Sprintf(`<p>Waiting for players to join...</p><p class="text-muted">Need at least 3 players to start</p><form hx-post="/close-lobby/%s" style="margin-top: 1rem;"><button type="submit" class="btn btn-secondary">Close Lobby</button></form>`, l.Code)
 		}
 	}
+	return `<p>Waiting for host to start the game...</p>`
 }
+
+// renderScoreTable generates HTML for the score table
+func (l *Lobby) renderScoreTable() string {
+	if len(l.Scores) == 0 {
+		return ""
+	}
+
+	html := `<div class="score-table"><h3>Scores</h3><table><tr><th>Player</th><th>Won</th><th>Lost</th></tr>`
+	for playerID, score := range l.Scores {
+		if player, exists := l.Players[playerID]; exists {
+			html += fmt.Sprintf(`<tr><td>%s</td><td>%d</td><td>%d</td></tr>`, player.Name, score.GamesWon, score.GamesLost)
+		}
+	}
+	html += `</table></div>`
+	return html
+}
+
+// ===== Utility Functions =====
 
 // generateRoomCode creates a random 6-character room code
 func generateRoomCode() string {
@@ -231,16 +291,27 @@ func generateRoomCode() string {
 
 // getUniqueRoomCode generates a unique room code
 func getUniqueRoomCode() string {
-	gamesMutex.RLock()
-	defer gamesMutex.RUnlock()
+	lobbiesMux.RLock()
+	defer lobbiesMux.RUnlock()
 
 	for {
 		code := generateRoomCode()
-		if _, exists := games[code]; !exists {
+		if _, exists := lobbies[code]; !exists {
 			return code
 		}
 	}
 }
+
+// getPlayerList converts map to sorted slice for templates
+func getPlayerList(players map[string]*Player) []*Player {
+	list := make([]*Player, 0, len(players))
+	for _, p := range players {
+		list = append(list, p)
+	}
+	return list
+}
+
+// ===== HTTP Handlers =====
 
 // handleIndex serves the landing page
 func handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -251,8 +322,8 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 	templates.ExecuteTemplate(w, "index.html", nil)
 }
 
-// handleCreateRoom creates a new game room
-func handleCreateRoom(w http.ResponseWriter, r *http.Request) {
+// handleCreateLobby creates a new lobby
+func handleCreateLobby(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -268,19 +339,20 @@ func handleCreateRoom(w http.ResponseWriter, r *http.Request) {
 	playerID := uuid.New().String()
 	roomCode := getUniqueRoomCode()
 
-	game := &Game{
-		RoomCode:     roomCode,
-		Host:         playerID,
-		Players:      []*Player{{ID: playerID, Name: hostName}},
-		Status:       StatusWaiting,
-		ReadyForRole: make(map[string]bool),
-		ReadyToVote:  make(map[string]bool),
-		Votes:        make(map[string]string),
+	lobby := &Lobby{
+		Code:    roomCode,
+		Host:    playerID,
+		Players: make(map[string]*Player),
+		Scores:  make(map[string]*PlayerScore),
 	}
+	lobby.Players[playerID] = &Player{ID: playerID, Name: hostName}
+	lobby.Scores[playerID] = &PlayerScore{}
 
-	gamesMutex.Lock()
-	games[roomCode] = game
-	gamesMutex.Unlock()
+	lobbiesMux.Lock()
+	lobbies[roomCode] = lobby
+	lobbiesMux.Unlock()
+
+	log.Printf("Created lobby: code=%s host=%s", roomCode, playerID)
 
 	// Set cookie for player ID
 	http.SetCookie(w, &http.Cookie{
@@ -294,8 +366,8 @@ func handleCreateRoom(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// handleJoinRoom allows a player to join an existing room
-func handleJoinRoom(w http.ResponseWriter, r *http.Request) {
+// handleJoinLobby allows a player to join an existing lobby
+func handleJoinLobby(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -310,31 +382,33 @@ func handleJoinRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	gamesMutex.RLock()
-	game, exists := games[roomCode]
-	gamesMutex.RUnlock()
+	lobbiesMux.RLock()
+	lobby, exists := lobbies[roomCode]
+	lobbiesMux.RUnlock()
 
 	if !exists {
 		http.Error(w, "Room not found", http.StatusNotFound)
 		return
 	}
 
-	game.mu.Lock()
-	if game.Status != StatusWaiting {
-		game.mu.Unlock()
-		http.Redirect(w, r, "/", http.StatusSeeOther)
+	lobby.mu.Lock()
+	if lobby.CurrentGame != nil {
+		lobby.mu.Unlock()
+		http.Error(w, "Game in progress", http.StatusBadRequest)
 		return
 	}
 
 	playerID := uuid.New().String()
-	game.Players = append(game.Players, &Player{
-		ID:   playerID,
-		Name: playerName,
-	})
-	game.mu.Unlock()
+	lobby.Players[playerID] = &Player{ID: playerID, Name: playerName}
+	lobby.Scores[playerID] = &PlayerScore{}
+	lobby.mu.Unlock()
 
-	// Broadcast personalized update to all clients
-	game.broadcastPersonalized()
+	log.Printf("Player joined lobby: code=%s playerID=%s name=%s", roomCode, playerID, playerName)
+
+	// Broadcast update to all clients
+	lobby.broadcastSSE("player-update", lobby.renderPlayerList())
+	lobby.broadcastSSE("score-update", lobby.renderScoreTable())
+	lobby.broadcastPersonalizedControls()
 
 	// Set cookie for player ID
 	http.SetCookie(w, &http.Cookie{
@@ -348,13 +422,13 @@ func handleJoinRoom(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// handleLobby displays the lobby for a room
+// handleLobby displays the lobby page
 func handleLobby(w http.ResponseWriter, r *http.Request) {
 	roomCode := strings.TrimPrefix(r.URL.Path, "/lobby/")
 
-	gamesMutex.RLock()
-	game, exists := games[roomCode]
-	gamesMutex.RUnlock()
+	lobbiesMux.RLock()
+	lobby, exists := lobbies[roomCode]
+	lobbiesMux.RUnlock()
 
 	if !exists {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
@@ -369,34 +443,736 @@ func handleLobby(w http.ResponseWriter, r *http.Request) {
 	}
 	playerID := cookie.Value
 
-	game.mu.RLock()
-	defer game.mu.RUnlock()
+	lobby.mu.RLock()
+	defer lobby.mu.RUnlock()
 
 	data := struct {
 		RoomCode string
+		PlayerID string
 		Players  []*Player
 		IsHost   bool
-		Status   GameStatus
+		Scores   map[string]*PlayerScore
 	}{
-		RoomCode: game.RoomCode,
-		Players:  game.Players,
-		IsHost:   game.Host == playerID,
-		Status:   game.Status,
+		RoomCode: lobby.Code,
+		PlayerID: playerID,
+		Players:  getPlayerList(lobby.Players),
+		IsHost:   lobby.Host == playerID,
+		Scores:   lobby.Scores,
 	}
 
 	templates.ExecuteTemplate(w, "lobby.html", data)
 }
 
-// handleLobbySSE streams lobby updates via Server-Sent Events
-func handleLobbySSE(w http.ResponseWriter, r *http.Request) {
-	roomCode := strings.TrimPrefix(r.URL.Path, "/lobby-updates/")
+// handleSSE handles Server-Sent Events for real-time updates
+func handleSSE(w http.ResponseWriter, r *http.Request) {
+	log.Printf("handleSSE called: %s", r.URL.Path)
 
-	gamesMutex.RLock()
-	game, exists := games[roomCode]
-	gamesMutex.RUnlock()
+	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/sse/"), "/")
+	if len(parts) != 2 {
+		log.Printf("handleSSE: invalid URL parts=%v", parts)
+		http.Error(w, "Invalid URL", http.StatusBadRequest)
+		return
+	}
+	roomCode := parts[0]
+	playerID := parts[1]
+
+	log.Printf("handleSSE: roomCode=%s playerID=%s", roomCode, playerID)
+
+	lobbiesMux.RLock()
+	lobby, exists := lobbies[roomCode]
+	lobbiesMux.RUnlock()
 
 	if !exists {
+		log.Printf("handleSSE: room %s not found", roomCode)
 		http.Error(w, "Room not found", http.StatusNotFound)
+		return
+	}
+
+	log.Printf("handleSSE: found lobby, setting up SSE for player %s", playerID)
+
+	// Set headers for SSE
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no") // Disable buffering in nginx/proxies
+
+	// Immediately flush headers to establish SSE connection
+	if flusher, ok := w.(http.Flusher); ok {
+		flusher.Flush()
+	}
+
+	// Create client channel
+	clientChan := make(chan SSEMessage, 10)
+	lobby.addSSEClient(clientChan, playerID)
+	defer lobby.removeSSEClient(clientChan)
+
+	lobby.mu.RLock()
+	clientCount := len(lobby.sseClients)
+	lobby.mu.RUnlock()
+	log.Printf("handleSSE: client %s connected, now have %d total clients", playerID, clientCount)
+
+	// Send initial data based on whether a game is in progress
+	lobby.mu.RLock()
+	gameInProgress := lobby.CurrentGame != nil
+	if gameInProgress {
+		// Game in progress - send ready count
+		game := lobby.CurrentGame
+		readyCount := 0
+		for _, ready := range game.ReadyStates {
+			if ready {
+				readyCount++
+			}
+		}
+		totalPlayers := len(lobby.Players)
+		readyData := fmt.Sprintf(`{"ready":%d,"total":%d}`, readyCount, totalPlayers)
+		lobby.mu.RUnlock()
+		log.Printf("handleSSE: sending initial ready-count to player %s: %s", playerID, readyData)
+		fmt.Fprintf(w, "event: ready-count\ndata: %s\n\n", readyData)
+	} else {
+		// No game - send lobby data
+		playerListHTML := lobby.renderPlayerList()
+		hostControlsHTML := lobby.renderHostControls(playerID)
+		scoreTableHTML := lobby.renderScoreTable()
+		lobby.mu.RUnlock()
+		log.Printf("handleSSE: sending initial lobby data to player %s", playerID)
+		fmt.Fprintf(w, "event: player-update\ndata: %s\n\n", playerListHTML)
+		fmt.Fprintf(w, "event: controls-update\ndata: %s\n\n", hostControlsHTML)
+		if scoreTableHTML != "" {
+			fmt.Fprintf(w, "event: score-update\ndata: %s\n\n", scoreTableHTML)
+		}
+	}
+	w.(http.Flusher).Flush()
+
+	// Listen for updates
+	ctx := r.Context()
+	for {
+		select {
+		case <-ctx.Done():
+			log.Printf("handleSSE: client %s disconnected", playerID)
+			return
+		case msg := <-clientChan:
+			log.Printf("handleSSE: sending event=%s to player %s", msg.Event, playerID)
+			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", msg.Event, msg.Data)
+			w.(http.Flusher).Flush()
+		}
+	}
+}
+
+// handleGame displays the unified game page for all phases
+func handleGame(w http.ResponseWriter, r *http.Request) {
+	log.Printf("handleGame called: %s", r.URL.Path)
+
+	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/game/"), "/")
+	if len(parts) != 2 {
+		log.Printf("handleGame: invalid URL parts=%v", parts)
+		http.Error(w, "Invalid URL", http.StatusBadRequest)
+		return
+	}
+	roomCode := parts[0]
+	playerID := parts[1]
+
+	log.Printf("handleGame: roomCode=%s playerID=%s", roomCode, playerID)
+
+	lobbiesMux.RLock()
+	lobby, exists := lobbies[roomCode]
+	lobbiesMux.RUnlock()
+
+	if !exists {
+		log.Printf("handleGame: lobby not found, redirecting to home")
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+
+	lobby.mu.RLock()
+	defer lobby.mu.RUnlock()
+
+	if lobby.CurrentGame == nil {
+		log.Printf("handleGame: no game in progress, redirecting to lobby")
+		http.Redirect(w, r, "/lobby/"+roomCode, http.StatusSeeOther)
+		return
+	}
+
+	log.Printf("handleGame: rendering game page for player %s in phase %s", playerID, lobby.CurrentGame.Status)
+
+	game := lobby.CurrentGame
+	player := lobby.Players[playerID]
+	if player == nil {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+
+	playerInfo := game.PlayerInfo[playerID]
+	if playerInfo == nil {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+
+	// Calculate time remaining
+	timeRemaining := "10:00"
+	if game.Status == StatusPlaying {
+		elapsed := time.Since(game.StartTime)
+		remaining := 10*time.Minute - elapsed
+		if remaining > 0 {
+			minutes := int(remaining.Minutes())
+			seconds := int(remaining.Seconds()) % 60
+			timeRemaining = fmt.Sprintf("%d:%02d", minutes, seconds)
+		} else {
+			timeRemaining = "0:00"
+		}
+	}
+
+	data := struct {
+		RoomCode        string
+		PlayerID        string
+		Status          GameStatus
+		Players         []*Player
+		TotalPlayers    int
+		Location        *Location
+		Challenge       string
+		IsSpy           bool
+		IsReady         bool
+		HasVoted        bool
+		VoteRound       int
+		FirstQuestioner string
+		TimeRemaining   string
+	}{
+		RoomCode:        roomCode,
+		PlayerID:        playerID,
+		Status:          game.Status,
+		Players:         getPlayerList(lobby.Players),
+		TotalPlayers:    len(lobby.Players),
+		Location:        game.Location,
+		Challenge:       playerInfo.Challenge,
+		IsSpy:           playerInfo.IsSpy,
+		IsReady:         game.ReadyStates[playerID],
+		HasVoted:        game.Votes[playerID] != "",
+		VoteRound:       game.VoteRound,
+		FirstQuestioner: game.FirstQuestioner,
+		TimeRemaining:   timeRemaining,
+	}
+
+	templates.ExecuteTemplate(w, "game.html", data)
+}
+
+// handleResults displays the game results
+func handleResults(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/results/"), "/")
+	if len(parts) != 2 {
+		http.Error(w, "Invalid URL", http.StatusBadRequest)
+		return
+	}
+	roomCode := parts[0]
+	playerID := parts[1]
+
+	lobbiesMux.RLock()
+	lobby, exists := lobbies[roomCode]
+	lobbiesMux.RUnlock()
+
+	if !exists {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+
+	lobby.mu.RLock()
+	defer lobby.mu.RUnlock()
+
+	if lobby.CurrentGame == nil {
+		http.Redirect(w, r, "/lobby/"+roomCode, http.StatusSeeOther)
+		return
+	}
+
+	game := lobby.CurrentGame
+	if game.Status != StatusFinished {
+		http.Redirect(w, r, "/game/"+roomCode+"/"+playerID, http.StatusSeeOther)
+		return
+	}
+
+	// Calculate vote counts
+	voteCount := make(map[string]int)
+	for _, suspectID := range game.Votes {
+		voteCount[suspectID]++
+	}
+
+	// Find most voted and check for tie
+	var mostVoted string
+	maxVotes := 0
+	isTie := false
+	voteCounts := make(map[int]int) // count -> frequency
+	for _, count := range voteCount {
+		voteCounts[count]++
+		if count > maxVotes {
+			maxVotes = count
+		}
+	}
+	if voteCounts[maxVotes] > 1 {
+		isTie = true
+	} else {
+		for suspectID, count := range voteCount {
+			if count == maxVotes {
+				mostVoted = suspectID
+				break
+			}
+		}
+	}
+
+	innocentWon := !isTie && mostVoted == game.SpyID
+
+	// Build challenges map
+	challenges := make(map[string]string)
+	for pid, info := range game.PlayerInfo {
+		challenges[pid] = info.Challenge
+	}
+
+	// Build voted correctly map
+	votedCorrectly := make(map[string]bool)
+	for voterID, suspectID := range game.Votes {
+		votedCorrectly[voterID] = suspectID == game.SpyID
+	}
+
+	spy := lobby.Players[game.SpyID]
+
+	data := struct {
+		RoomCode       string
+		PlayerID       string
+		IsHost         bool
+		Players        []*Player
+		Spy            *Player
+		Location       *Location
+		Challenges     map[string]string
+		Votes          map[string]string
+		VoteCount      map[string]int
+		VotedCorrectly map[string]bool
+		VoteRounds     int
+		MostVoted      string
+		IsTie          bool
+		InnocentWon    bool
+	}{
+		RoomCode:       roomCode,
+		PlayerID:       playerID,
+		IsHost:         lobby.Host == playerID,
+		Players:        getPlayerList(lobby.Players),
+		Spy:            spy,
+		Location:       game.Location,
+		Challenges:     challenges,
+		Votes:          game.Votes,
+		VoteCount:      voteCount,
+		VotedCorrectly: votedCorrectly,
+		VoteRounds:     game.VoteRound,
+		MostVoted:      mostVoted,
+		IsTie:          isTie,
+		InnocentWon:    innocentWon,
+	}
+
+	templates.ExecuteTemplate(w, "results.html", data)
+}
+
+// handleStartGame starts a new game in the lobby
+func handleStartGame(w http.ResponseWriter, r *http.Request) {
+	log.Printf("handleStartGame called: %s %s", r.Method, r.URL.Path)
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	roomCode := strings.TrimPrefix(r.URL.Path, "/start-game/")
+
+	log.Printf("handleStartGame: roomCode=%s", roomCode)
+
+	lobbiesMux.RLock()
+	lobby, exists := lobbies[roomCode]
+	lobbiesMux.RUnlock()
+
+	if !exists {
+		log.Printf("handleStartGame: lobby %s not found", roomCode)
+		http.Error(w, "Lobby not found", http.StatusNotFound)
+		return
+	}
+
+	// Get player ID from cookie
+	cookie, err := r.Cookie("player_id")
+	if err != nil {
+		log.Printf("handleStartGame: no player_id cookie")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	playerID := cookie.Value
+
+	log.Printf("handleStartGame: playerID=%s isHost=%v", playerID, lobby.Host == playerID)
+
+	lobby.mu.Lock()
+
+	// Check if player is host
+	if lobby.Host != playerID {
+		lobby.mu.Unlock()
+		log.Printf("handleStartGame: player is not host")
+		http.Error(w, "Only host can start game", http.StatusForbidden)
+		return
+	}
+
+	if lobby.CurrentGame != nil {
+		lobby.mu.Unlock()
+		log.Printf("handleStartGame: game already in progress")
+		http.Error(w, "Game already in progress", http.StatusBadRequest)
+		return
+	}
+
+	if len(lobby.Players) < 3 {
+		lobby.mu.Unlock()
+		log.Printf("handleStartGame: not enough players (%d)", len(lobby.Players))
+		http.Error(w, "Need at least 3 players", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("handleStartGame: creating game for lobby %s", roomCode)
+
+	// Create new game
+	game := &Game{
+		Lobby:       lobby,
+		Location:    &locations[rand.Intn(len(locations))],
+		PlayerInfo:  make(map[string]*GamePlayerInfo),
+		Status:      StatusReadyCheck,
+		ReadyStates: make(map[string]bool),
+		Votes:       make(map[string]string),
+		VoteRound:   1,
+		timerDone:   make(chan bool),
+	}
+
+	// Assign spy
+	playerIDs := make([]string, 0, len(lobby.Players))
+	for id := range lobby.Players {
+		playerIDs = append(playerIDs, id)
+	}
+	game.SpyID = playerIDs[rand.Intn(len(playerIDs))]
+
+	// Assign challenges and roles
+	shuffledChallenges := make([]string, len(challenges))
+	copy(shuffledChallenges, challenges)
+	rand.Shuffle(len(shuffledChallenges), func(i, j int) {
+		shuffledChallenges[i], shuffledChallenges[j] = shuffledChallenges[j], shuffledChallenges[i]
+	})
+
+	for i, id := range playerIDs {
+		game.PlayerInfo[id] = &GamePlayerInfo{
+			Challenge: shuffledChallenges[i%len(shuffledChallenges)],
+			IsSpy:     id == game.SpyID,
+		}
+	}
+
+	lobby.CurrentGame = game
+	lobby.mu.Unlock()
+
+	log.Printf("handleStartGame: game created, broadcasting game-started event")
+
+	// Notify all clients that game started
+	lobby.broadcastSSE("game-started", roomCode)
+
+	log.Printf("handleStartGame: complete")
+	w.WriteHeader(http.StatusOK)
+}
+
+// handleReady handles all ready state toggles (unified for all phases)
+func handleReady(w http.ResponseWriter, r *http.Request) {
+	log.Printf("handleReady called: %s %s (full path)", r.Method, r.URL.Path)
+
+	if r.Method != http.MethodPost {
+		log.Printf("handleReady: wrong method %s", r.Method)
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/ready/"), "/")
+	log.Printf("handleReady: parts = %v (len=%d)", parts, len(parts))
+
+	if len(parts) != 2 {
+		log.Printf("handleReady: invalid URL, expected 2 parts got %d", len(parts))
+		http.Error(w, "Invalid URL", http.StatusBadRequest)
+		return
+	}
+	roomCode := parts[0]
+	playerID := parts[1]
+
+	lobbiesMux.RLock()
+	lobby, exists := lobbies[roomCode]
+	lobbiesMux.RUnlock()
+
+	if !exists {
+		http.Error(w, "Lobby not found", http.StatusNotFound)
+		return
+	}
+
+	log.Printf("handleReady: acquiring lock for room %s player %s", roomCode, playerID)
+
+	// Prepare all broadcast messages while holding lock
+	var phaseChangeMsg string
+	var readyCountMsg string
+	var buttonHTML string
+	var shouldBroadcastPhase bool
+
+	lobby.mu.Lock()
+	game := lobby.CurrentGame
+	if game == nil {
+		lobby.mu.Unlock()
+		http.Error(w, "No game in progress", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("handleReady: toggling ready state for player %s in phase %s", playerID, game.Status)
+
+	// Toggle ready state
+	game.ReadyStates[playerID] = !game.ReadyStates[playerID]
+	isReady := game.ReadyStates[playerID]
+
+	// Check if all players are ready
+	allReady := true
+	for id := range lobby.Players {
+		if !game.ReadyStates[id] {
+			allReady = false
+			break
+		}
+	}
+
+	// Count ready players BEFORE potentially resetting
+	readyCount := 0
+	for _, ready := range game.ReadyStates {
+		if ready {
+			readyCount++
+		}
+	}
+
+	log.Printf("handleReady: ready count %d/%d, allReady=%v", readyCount, len(lobby.Players), allReady)
+
+	if allReady {
+		log.Printf("handleReady: all players ready, advancing from phase %s", game.Status)
+		// Advance game state based on current status
+		switch game.Status {
+		case StatusReadyCheck:
+			game.Status = StatusRoleReveal
+			phaseChangeMsg = `{"phase":"role_reveal"}`
+			shouldBroadcastPhase = true
+		case StatusRoleReveal:
+			game.Status = StatusPlaying
+			game.StartTime = time.Now()
+			// Choose random first questioner
+			playerIDs := make([]string, 0, len(lobby.Players))
+			for id := range lobby.Players {
+				playerIDs = append(playerIDs, id)
+			}
+			game.FirstQuestioner = playerIDs[rand.Intn(len(playerIDs))]
+			phaseChangeMsg = `{"phase":"playing"}`
+			shouldBroadcastPhase = true
+			// Start timer goroutine AFTER releasing lock
+			go game.runTimer(lobby)
+		}
+		// Reset ready states for next phase
+		game.ReadyStates = make(map[string]bool)
+		log.Printf("handleReady: advanced to phase %s", game.Status)
+	}
+
+	// Prepare ready count message (using count calculated before potential reset)
+	readyCountMsg = fmt.Sprintf(`{"ready":%d,"total":%d}`, readyCount, len(lobby.Players))
+
+	// Prepare button HTML based on current game status
+	buttonID := "ready-button-check"
+	buttonText := "I'm Ready to See My Role"
+	buttonClass := "btn btn-primary"
+
+	switch game.Status {
+	case StatusReadyCheck:
+		buttonID = "ready-button-check"
+		if isReady {
+			buttonText = "✓ Ready - Waiting for others..."
+			buttonClass = "btn btn-success"
+		} else {
+			buttonText = "I'm Ready to See My Role"
+		}
+	case StatusRoleReveal:
+		buttonID = "ready-button-role"
+		if isReady {
+			buttonText = "✓ Waiting for others..."
+			buttonClass = "btn btn-success"
+		} else {
+			buttonText = "I've Seen My Role ✓"
+		}
+	case StatusPlaying:
+		buttonID = "ready-button-playing"
+		if isReady {
+			buttonText = "✓ Ready to Vote"
+			buttonClass = "btn btn-success"
+		} else {
+			buttonText = "Ready to Vote?"
+			buttonClass = "btn btn-secondary"
+		}
+	}
+
+	buttonHTML = fmt.Sprintf(`<button id="%s" type="submit" class="%s">%s</button>`, buttonID, buttonClass, buttonText)
+
+	lobby.mu.Unlock()
+	log.Printf("handleReady: lock released, broadcasting updates")
+
+	// Now broadcast WITHOUT holding the lock to avoid deadlock
+	if shouldBroadcastPhase {
+		log.Printf("handleReady: broadcasting phase-change: %s", phaseChangeMsg)
+		lobby.broadcastSSE("phase-change", phaseChangeMsg)
+	}
+
+	log.Printf("handleReady: broadcasting ready-count: %s", readyCountMsg)
+	lobby.broadcastSSE("ready-count", readyCountMsg)
+
+	log.Printf("handleReady: sending button HTML response")
+	w.Header().Set("Content-Type", "text/html")
+	w.Write([]byte(buttonHTML))
+}
+
+// handleVote handles player votes
+func handleVote(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/vote/"), "/")
+	if len(parts) != 2 {
+		http.Error(w, "Invalid URL", http.StatusBadRequest)
+		return
+	}
+	roomCode := parts[0]
+	playerID := parts[1]
+
+	r.ParseForm()
+	suspectID := r.FormValue("suspect")
+
+	lobbiesMux.RLock()
+	lobby, exists := lobbies[roomCode]
+	lobbiesMux.RUnlock()
+
+	if !exists {
+		http.Error(w, "Lobby not found", http.StatusNotFound)
+		return
+	}
+
+	lobby.mu.Lock()
+	defer lobby.mu.Unlock()
+
+	game := lobby.CurrentGame
+	if game == nil || game.Status != StatusVoting {
+		http.Error(w, "Not in voting phase", http.StatusBadRequest)
+		return
+	}
+
+	game.Votes[playerID] = suspectID
+
+	// Check if all players voted
+	if len(game.Votes) == len(lobby.Players) {
+		// Count votes
+		voteCount := make(map[string]int)
+		for _, votedFor := range game.Votes {
+			voteCount[votedFor]++
+		}
+
+		// Find max votes
+		maxVotes := 0
+		var playersWithMaxVotes []string
+		for pID, count := range voteCount {
+			if count > maxVotes {
+				maxVotes = count
+				playersWithMaxVotes = []string{pID}
+			} else if count == maxVotes {
+				playersWithMaxVotes = append(playersWithMaxVotes, pID)
+			}
+		}
+
+		// Check for tie
+		if len(playersWithMaxVotes) > 1 && game.VoteRound < 3 {
+			// Tie - revote
+			game.Votes = make(map[string]string)
+			game.VoteRound++
+			lobby.broadcastSSE("vote-tie", fmt.Sprintf("%d", game.VoteRound))
+		} else {
+			// Game over - update scores
+			game.Status = StatusFinished
+
+			// Determine winner
+			innocentWon := len(playersWithMaxVotes) == 1 && playersWithMaxVotes[0] == game.SpyID
+
+			// Update scores
+			for id := range lobby.Players {
+				if id == game.SpyID {
+					if innocentWon {
+						lobby.Scores[id].GamesLost++
+					} else {
+						lobby.Scores[id].GamesWon++
+					}
+				} else {
+					if innocentWon {
+						lobby.Scores[id].GamesWon++
+					} else {
+						lobby.Scores[id].GamesLost++
+					}
+				}
+			}
+
+			lobby.broadcastSSE("game-finished", "")
+		}
+	}
+
+	// Broadcast vote count
+	lobby.broadcastSSE("vote-count", fmt.Sprintf(`{"count":%d,"total":%d}`, len(game.Votes), len(lobby.Players)))
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleRestartGame resets the game and returns to lobby
+func handleRestartGame(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	roomCode := strings.TrimPrefix(r.URL.Path, "/restart-game/")
+
+	lobbiesMux.RLock()
+	lobby, exists := lobbies[roomCode]
+	lobbiesMux.RUnlock()
+
+	if !exists {
+		http.Error(w, "Lobby not found", http.StatusNotFound)
+		return
+	}
+
+	lobby.mu.Lock()
+	defer lobby.mu.Unlock()
+
+	// Stop timer if running
+	if lobby.CurrentGame != nil && lobby.CurrentGame.timerDone != nil {
+		close(lobby.CurrentGame.timerDone)
+	}
+
+	// Clear game
+	lobby.CurrentGame = nil
+
+	// Broadcast restart
+	lobby.broadcastSSE("game-restarted", "")
+
+	w.Header().Set("HX-Redirect", "/lobby/"+roomCode)
+	w.WriteHeader(http.StatusOK)
+}
+
+// handleCloseLobby deletes the lobby
+func handleCloseLobby(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	roomCode := strings.TrimPrefix(r.URL.Path, "/close-lobby/")
+
+	lobbiesMux.RLock()
+	lobby, exists := lobbies[roomCode]
+	lobbiesMux.RUnlock()
+
+	if !exists {
+		http.Error(w, "Lobby not found", http.StatusNotFound)
 		return
 	}
 
@@ -408,928 +1184,58 @@ func handleLobbySSE(w http.ResponseWriter, r *http.Request) {
 	}
 	playerID := cookie.Value
 
-	// Set headers for SSE
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
+	lobby.mu.Lock()
+	if lobby.Host != playerID {
+		lobby.mu.Unlock()
+		http.Error(w, "Only host can close lobby", http.StatusForbidden)
+		return
+	}
+	lobby.mu.Unlock()
 
-	// Create client channel
-	clientChan := make(chan string, 10)
-	game.addClient(clientChan, playerID)
-	defer game.removeClient(clientChan)
+	// Broadcast closure
+	lobby.broadcastSSE("lobby-closed", "")
 
-	// Send initial data
-	game.mu.RLock()
-	playerListHTML := renderPlayerList(game.Players)
-	hostControlsHTML := renderHostControls(game, playerID)
-	game.mu.RUnlock()
+	// Delete lobby
+	lobbiesMux.Lock()
+	delete(lobbies, roomCode)
+	lobbiesMux.Unlock()
 
-	fmt.Fprintf(w, "event: players\ndata: %s\n\n", playerListHTML)
-	fmt.Fprintf(w, "event: controls\ndata: %s\n\n", hostControlsHTML)
-	w.(http.Flusher).Flush()
+	w.Header().Set("HX-Redirect", "/")
+	w.WriteHeader(http.StatusOK)
+}
 
-	// Listen for updates
-	ctx := r.Context()
+// ===== Game Methods =====
+
+// runTimer runs the game timer and broadcasts updates
+func (g *Game) runTimer(lobby *Lobby) {
+	const gameDuration = 10 * time.Minute
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
 	for {
 		select {
-		case <-ctx.Done():
+		case <-g.timerDone:
 			return
-		case msg := <-clientChan:
-			fmt.Fprintf(w, "%s\n\n", msg)
-			w.(http.Flusher).Flush()
-		}
-	}
-}
+		case <-ticker.C:
+			elapsed := time.Since(g.StartTime)
+			remaining := gameDuration - elapsed
 
-// renderPlayerList generates HTML for the player list (inner content only for sse-swap)
-func renderPlayerList(players []*Player) string {
-	html := fmt.Sprintf(`<h2>Players (%d)</h2><ul class="player-list">`, len(players))
-	for _, p := range players {
-		html += fmt.Sprintf(`<li class="player-item"><span class="player-name">%s</span></li>`, p.Name)
-	}
-	html += `</ul>`
-	return html
-}
-
-// renderHostControls generates HTML for host controls (inner content only for sse-swap)
-func renderHostControls(game *Game, playerID string) string {
-	isHost := game.Host == playerID
-	playerCount := len(game.Players)
-
-	if isHost {
-		if playerCount >= 3 {
-			return fmt.Sprintf(`<form hx-post="/start/%s"><button type="submit" class="btn btn-primary">Start Game</button></form>`, game.RoomCode)
-		} else {
-			return `<p>Waiting for players to join...</p><p class="text-muted">Need at least 3 players to start</p>`
-		}
-	}
-	return `<p>Waiting for host to start the game...</p>`
-}
-
-// handleStartGame starts the game
-func handleStartGame(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	roomCode := strings.TrimPrefix(r.URL.Path, "/start/")
-
-	gamesMutex.RLock()
-	game, exists := games[roomCode]
-	gamesMutex.RUnlock()
-
-	if !exists {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-		return
-	}
-
-	// Get player ID from cookie
-	cookie, err := r.Cookie("player_id")
-	if err != nil {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-		return
-	}
-	playerID := cookie.Value
-
-	game.mu.Lock()
-
-	// Check if player is host
-	if game.Host != playerID {
-		game.mu.Unlock()
-		http.Error(w, "Only host can start game", http.StatusForbidden)
-		return
-	}
-
-	if game.Status != StatusWaiting {
-		game.mu.Unlock()
-		http.Error(w, "Game already started", http.StatusBadRequest)
-		return
-	}
-
-	if len(game.Players) < 3 {
-		game.mu.Unlock()
-		http.Error(w, "Need at least 3 players", http.StatusBadRequest)
-		return
-	}
-
-	// Assign location
-	game.Location = &locations[rand.Intn(len(locations))]
-
-	// Assign spy
-	spyIndex := rand.Intn(len(game.Players))
-	game.SpyID = game.Players[spyIndex].ID
-	game.Players[spyIndex].IsSpy = true
-
-	// Assign challenges
-	shuffledChallenges := make([]string, len(challenges))
-	copy(shuffledChallenges, challenges)
-	rand.Shuffle(len(shuffledChallenges), func(i, j int) {
-		shuffledChallenges[i], shuffledChallenges[j] = shuffledChallenges[j], shuffledChallenges[i]
-	})
-
-	for i, player := range game.Players {
-		player.Challenge = shuffledChallenges[i%len(shuffledChallenges)]
-	}
-
-	game.Status = StatusReadyCheck
-	game.mu.Unlock()
-
-	// Notify all connected clients to redirect
-	game.broadcast("event: game-started\ndata: started")
-
-	// Redirect to game
-	w.Header().Set("HX-Redirect", fmt.Sprintf("/game/%s/%s", roomCode, playerID))
-	w.WriteHeader(http.StatusOK)
-}
-
-// handleGame displays the game screen based on current status
-func handleGame(w http.ResponseWriter, r *http.Request) {
-	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/game/"), "/")
-	if len(parts) != 2 {
-		http.Error(w, "Invalid URL", http.StatusBadRequest)
-		return
-	}
-	roomCode := parts[0]
-	playerID := parts[1]
-
-	gamesMutex.RLock()
-	game, exists := games[roomCode]
-	gamesMutex.RUnlock()
-
-	if !exists {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-		return
-	}
-
-	game.mu.RLock()
-	defer game.mu.RUnlock()
-
-	// Find player
-	var player *Player
-	for _, p := range game.Players {
-		if p.ID == playerID {
-			player = p
-			break
-		}
-	}
-	if player == nil {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-		return
-	}
-
-	// Check if voting should start
-	if game.Status == StatusPlaying && game.shouldStartVoting() {
-		game.mu.RUnlock()
-		game.mu.Lock()
-		game.Status = StatusVoting
-		game.mu.Unlock()
-		game.mu.RLock()
-		w.Header().Set("HX-Trigger", "votingStarted")
-	}
-
-	// Render appropriate template based on status
-	switch game.Status {
-	case StatusReadyCheck:
-		// Check if this is an HTMX polling request
-		if r.Header.Get("HX-Request") == "true" {
-			// Body is polling - check if we should still be on this page
-			// (Status might have changed to StatusRoleReveal)
-			if game.Status != StatusReadyCheck {
-				w.Header().Set("HX-Redirect", fmt.Sprintf("/game/%s/%s", game.RoomCode, playerID))
-				w.WriteHeader(http.StatusOK)
+			if remaining <= 0 {
+				// Time's up - start voting
+				lobby.mu.Lock()
+				if g.Status == StatusPlaying {
+					g.Status = StatusVoting
+					lobby.broadcastSSE("phase-change", `{"phase":"voting"}`)
+				}
+				lobby.mu.Unlock()
 				return
 			}
-		}
 
-		readyCount := 0
-		for _, ready := range game.ReadyForRole {
-			if ready {
-				readyCount++
-			}
-		}
-
-		data := struct {
-			RoomCode     string
-			PlayerID     string
-			IsReady      bool
-			ReadyCount   int
-			TotalPlayers int
-		}{
-			RoomCode:     game.RoomCode,
-			PlayerID:     playerID,
-			IsReady:      game.ReadyForRole[playerID],
-			ReadyCount:   readyCount,
-			TotalPlayers: len(game.Players),
-		}
-		templates.ExecuteTemplate(w, "ready-check.html", data)
-
-	case StatusRoleReveal:
-		// Check if this is an HTMX polling request from ready-check
-		// If so, redirect to reload the page
-		if r.Header.Get("HX-Request") == "true" {
-			w.Header().Set("HX-Redirect", fmt.Sprintf("/game/%s/%s", game.RoomCode, playerID))
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-
-		data := struct {
-			RoomCode     string
-			Player       *Player
-			Location     *Location
-			Challenge    string
-			IsSpy        bool
-			HasConfirmed bool
-		}{
-			RoomCode:     game.RoomCode,
-			Player:       player,
-			Location:     game.Location,
-			Challenge:    player.Challenge,
-			IsSpy:        player.IsSpy,
-			HasConfirmed: player.HasConfirmedRole,
-		}
-		templates.ExecuteTemplate(w, "role-reveal.html", data)
-
-	case StatusPlaying:
-		// Check if this is an HTMX polling request from role-reveal screen
-		// If the game has transitioned to playing but we're getting polled from role-reveal, redirect
-		if r.Header.Get("HX-Request") == "true" {
-			// Check if this looks like a polling request (not a direct navigation)
-			// Polling requests come from <body hx-get="..."> with hx-swap="none"
-			if r.Header.Get("HX-Target") == "" {
-				// This is a polling request, send redirect
-				w.Header().Set("HX-Redirect", fmt.Sprintf("/game/%s/%s", game.RoomCode, playerID))
-				w.WriteHeader(http.StatusOK)
-				return
-			}
-		}
-
-		timeRemaining := game.timeRemaining()
-		readyCount := 0
-		for _, ready := range game.ReadyToVote {
-			if ready {
-				readyCount++
-			}
-		}
-
-		data := struct {
-			RoomCode        string
-			Players         []*Player
-			TimeRemaining   string
-			ReadyCount      int
-			TotalPlayers    int
-			IsReady         bool
-			PlayerID        string
-			Challenge       string
-			FirstQuestioner string
-		}{
-			RoomCode:        game.RoomCode,
-			Players:         game.Players,
-			TimeRemaining:   formatDuration(timeRemaining),
-			ReadyCount:      readyCount,
-			TotalPlayers:    len(game.Players),
-			IsReady:         game.ReadyToVote[playerID],
-			PlayerID:        playerID,
-			Challenge:       player.Challenge,
-			FirstQuestioner: game.FirstQuestioner,
-		}
-		templates.ExecuteTemplate(w, "playing.html", data)
-
-	case StatusVoting:
-		voteCount := len(game.Votes)
-		totalPlayers := len(game.Players)
-
-		data := struct {
-			RoomCode     string
-			Players      []*Player
-			PlayerID     string
-			HasVoted     bool
-			VotedForID   string
-			VoteCount    int
-			TotalPlayers int
-			VoteRound    int
-		}{
-			RoomCode:     game.RoomCode,
-			Players:      game.Players,
-			PlayerID:     playerID,
-			HasVoted:     game.Votes[playerID] != "",
-			VotedForID:   game.Votes[playerID],
-			VoteCount:    voteCount,
-			TotalPlayers: totalPlayers,
-			VoteRound:    game.VoteRound,
-		}
-		templates.ExecuteTemplate(w, "voting.html", data)
-
-	case StatusFinished:
-		http.Redirect(w, r, "/results/"+roomCode, http.StatusSeeOther)
-	}
-}
-
-// handleReadyForRole toggles a player's ready status for role reveal
-func handleReadyForRole(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/ready-for-role/"), "/")
-	if len(parts) != 2 {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-		return
-	}
-	roomCode := parts[0]
-	playerID := parts[1]
-
-	gamesMutex.RLock()
-	game, exists := games[roomCode]
-	gamesMutex.RUnlock()
-
-	if !exists {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-		return
-	}
-
-	game.mu.Lock()
-	defer game.mu.Unlock()
-
-	// Toggle ready status
-	game.ReadyForRole[playerID] = !game.ReadyForRole[playerID]
-	isReady := game.ReadyForRole[playerID]
-
-	// Check if all players are ready
-	allReady := true
-	for _, player := range game.Players {
-		if !game.ReadyForRole[player.ID] {
-			allReady = false
-			break
+			// Broadcast time update
+			minutes := int(remaining.Minutes())
+			seconds := int(remaining.Seconds()) % 60
+			timeStr := fmt.Sprintf("%d:%02d", minutes, seconds)
+			lobby.broadcastSSE("timer-update", fmt.Sprintf(`{"time":"%s"}`, timeStr))
 		}
 	}
-
-	// If all players ready, transition to role reveal
-	if allReady && game.Status == StatusReadyCheck {
-		game.Status = StatusRoleReveal
-	}
-
-	// Return updated button HTML with ready count update
-	buttonClass := "btn-secondary"
-	buttonText := "Ready?"
-	if isReady {
-		buttonClass = "btn btn-success"
-		buttonText = "✓ Ready - Waiting for others..."
-	}
-
-	// Count ready players
-	readyCount := 0
-	for _, ready := range game.ReadyForRole {
-		if ready {
-			readyCount++
-		}
-	}
-
-	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprintf(w, `<button id="ready-button" type="submit" class="%s" hx-post="/ready-for-role/%s/%s" hx-target="#ready-button-container" hx-swap="innerHTML">%s</button>`, buttonClass, roomCode, playerID, buttonText)
-}
-
-// handleReadyForRoleStatus returns the current ready count for the ready-check page
-func handleReadyForRoleStatus(w http.ResponseWriter, r *http.Request) {
-	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/ready-for-role-status/"), "/")
-	if len(parts) != 1 {
-		http.Error(w, "Invalid request", http.StatusBadRequest)
-		return
-	}
-	roomCode := parts[0]
-
-	gamesMutex.RLock()
-	game, exists := games[roomCode]
-	gamesMutex.RUnlock()
-
-	if !exists {
-		http.Error(w, "Game not found", http.StatusNotFound)
-		return
-	}
-
-	game.mu.RLock()
-	readyCount := 0
-	for _, ready := range game.ReadyForRole {
-		if ready {
-			readyCount++
-		}
-	}
-	totalPlayers := len(game.Players)
-	game.mu.RUnlock()
-
-	// Return just the ready count text
-	html := fmt.Sprintf(`<p class="ready-count">%d/%d players ready</p>`, readyCount, totalPlayers)
-	w.Header().Set("Content-Type", "text/html")
-	w.Write([]byte(html))
-}
-
-// handleConfirmRole marks that a player has seen their role
-func handleConfirmRole(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/confirm/"), "/")
-	if len(parts) != 2 {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-		return
-	}
-	roomCode := parts[0]
-	playerID := parts[1]
-
-	gamesMutex.RLock()
-	game, exists := games[roomCode]
-	gamesMutex.RUnlock()
-
-	if !exists {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-		return
-	}
-
-	game.mu.Lock()
-
-	// Find and mark player as confirmed
-	for _, p := range game.Players {
-		if p.ID == playerID {
-			p.HasConfirmedRole = true
-			break
-		}
-	}
-
-	// Check if all players confirmed
-	allConfirmed := true
-	for _, p := range game.Players {
-		if !p.HasConfirmedRole {
-			allConfirmed = false
-			break
-		}
-	}
-
-	// Start playing phase if all confirmed
-	if allConfirmed && game.Status == StatusRoleReveal {
-		game.Status = StatusPlaying
-		game.StartTime = time.Now()
-		// Choose a random player to ask the first question
-		game.FirstQuestioner = game.Players[rand.Intn(len(game.Players))].ID
-	}
-
-	game.mu.Unlock()
-
-	// Return updated button HTML showing confirmed state
-	html := `<button id="confirm-button" type="submit" class="btn btn-success">✓ Waiting for others...</button>`
-	w.Header().Set("Content-Type", "text/html")
-	w.Write([]byte(html))
-}
-
-// handleToggleReady toggles a player's ready to vote status
-func handleToggleReady(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/ready/"), "/")
-	if len(parts) != 2 {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-		return
-	}
-	roomCode := parts[0]
-	playerID := parts[1]
-
-	gamesMutex.RLock()
-	game, exists := games[roomCode]
-	gamesMutex.RUnlock()
-
-	if !exists {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-		return
-	}
-
-	game.mu.Lock()
-	game.ReadyToVote[playerID] = !game.ReadyToVote[playerID]
-	isReady := game.ReadyToVote[playerID]
-
-	// Count ready players
-	readyCount := 0
-	for _, ready := range game.ReadyToVote {
-		if ready {
-			readyCount++
-		}
-	}
-	totalPlayers := len(game.Players)
-
-	// Check if all players are ready
-	if readyCount == totalPlayers && totalPlayers > 0 {
-		game.Status = StatusVoting
-		game.VoteRound = 1 // Initialize vote round
-	}
-	game.mu.Unlock()
-
-	// Return just the button HTML
-	buttonClass := "btn-secondary"
-	buttonText := "Ready to Vote?"
-	if isReady {
-		buttonClass = "btn-success"
-		buttonText = "✓ Ready to Vote"
-	}
-
-	html := fmt.Sprintf(`<button id="ready-button" type="submit" class="btn %s">%s</button>`, buttonClass, buttonText)
-
-	w.Header().Set("Content-Type", "text/html")
-	w.Write([]byte(html))
-}
-
-// handleReadyStatus returns the current ready count
-func handleReadyStatus(w http.ResponseWriter, r *http.Request) {
-	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/ready-status/"), "/")
-	if len(parts) != 2 {
-		http.Error(w, "Invalid request", http.StatusBadRequest)
-		return
-	}
-	roomCode := parts[0]
-	playerID := parts[1]
-
-	gamesMutex.RLock()
-	game, exists := games[roomCode]
-	gamesMutex.RUnlock()
-
-	if !exists {
-		http.Error(w, "Game not found", http.StatusNotFound)
-		return
-	}
-
-	game.mu.RLock()
-	readyCount := 0
-	for _, ready := range game.ReadyToVote {
-		if ready {
-			readyCount++
-		}
-	}
-	totalPlayers := len(game.Players)
-	status := game.Status
-	game.mu.RUnlock()
-
-	// If all players are ready, send redirect header to voting page
-	if status == StatusVoting {
-		w.Header().Set("HX-Redirect", fmt.Sprintf("/game/%s/%s", roomCode, playerID))
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
-	// Return just the ready count text
-	html := fmt.Sprintf("%d/%d players ready to vote", readyCount, totalPlayers)
-	w.Header().Set("Content-Type", "text/html")
-	w.Write([]byte(html))
-}
-
-// handleVote records a player's vote for who the spy is
-func handleVote(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/vote/"), "/")
-	if len(parts) != 2 {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-		return
-	}
-	roomCode := parts[0]
-	playerID := parts[1]
-
-	gamesMutex.RLock()
-	game, exists := games[roomCode]
-	gamesMutex.RUnlock()
-
-	if !exists {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-		return
-	}
-
-	r.ParseForm()
-	suspectID := r.FormValue("suspect")
-
-	game.mu.Lock()
-	game.Votes[playerID] = suspectID
-
-	// Check if all players voted
-	allVoted := len(game.Votes) == len(game.Players)
-
-	if allVoted {
-		// Count votes to check for ties
-		voteCount := make(map[string]int)
-		for _, votedFor := range game.Votes {
-			voteCount[votedFor]++
-		}
-
-		// Find the maximum vote count
-		maxVotes := 0
-		var playersWithMaxVotes []string
-		for playerID, count := range voteCount {
-			if count > maxVotes {
-				maxVotes = count
-				playersWithMaxVotes = []string{playerID}
-			} else if count == maxVotes {
-				playersWithMaxVotes = append(playersWithMaxVotes, playerID)
-			}
-		}
-
-		// Check if there's a tie
-		if len(playersWithMaxVotes) > 1 {
-			// There's a tie
-			const maxVoteRounds = 3
-			if game.VoteRound >= maxVoteRounds {
-				// Max rounds reached - go to results with a tie
-				game.Status = StatusFinished
-			} else {
-				// Re-vote: reset votes and increment round
-				game.Votes = make(map[string]string)
-				game.VoteRound++
-				game.Status = StatusVoting
-				// Broadcast tie event to trigger page refresh for all players
-				game.mu.Unlock()
-				game.broadcast("event: vote-tie\ndata: tie")
-				game.mu.Lock()
-			}
-		} else {
-			// Clear winner - move to results
-			game.Status = StatusFinished
-		}
-	}
-	game.mu.Unlock()
-
-	// Return the "voted" confirmation HTML
-	html := `<div class="card">
-		<p class="vote-status">✓ You voted</p>
-		<p class="text-muted">Waiting for other players to vote...</p>
-	</div>`
-
-	w.Header().Set("Content-Type", "text/html")
-	w.Write([]byte(html))
-}
-
-// handleVoteStatus returns the current vote count and redirects when voting is complete
-func handleVoteStatus(w http.ResponseWriter, r *http.Request) {
-	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/vote-status/"), "/")
-	if len(parts) != 2 {
-		http.Error(w, "Invalid request", http.StatusBadRequest)
-		return
-	}
-	roomCode := parts[0]
-
-	gamesMutex.RLock()
-	game, exists := games[roomCode]
-	gamesMutex.RUnlock()
-
-	if !exists {
-		http.Error(w, "Game not found", http.StatusNotFound)
-		return
-	}
-
-	game.mu.RLock()
-	voteCount := len(game.Votes)
-	totalPlayers := len(game.Players)
-	status := game.Status
-	game.mu.RUnlock()
-
-	// If all players voted and there's a tie, voting continues - need to refresh
-	// If all players voted and no tie, redirect to results
-	if status == StatusFinished {
-		w.Header().Set("HX-Redirect", fmt.Sprintf("/results/%s", roomCode))
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
-	// If we had all votes but status is still voting (tie happened), refresh the page
-	if voteCount == 0 && status == StatusVoting && r.Header.Get("HX-Request") == "true" {
-		// This could be right after a tie - check if we should refresh
-		// We'll send a refresh to reload the voting page with new round number
-		w.Header().Set("HX-Refresh", "true")
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
-	// Return just the vote count text
-	html := fmt.Sprintf(`<p class="ready-count">%d/%d players have voted</p>`, voteCount, totalPlayers)
-	w.Header().Set("Content-Type", "text/html")
-	w.Write([]byte(html))
-}
-
-// handleResults displays the game results
-func handleResults(w http.ResponseWriter, r *http.Request) {
-	roomCode := strings.TrimPrefix(r.URL.Path, "/results/")
-
-	// Validate room code exists
-	if roomCode == "" {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-		return
-	}
-
-	gamesMutex.RLock()
-	game, exists := games[roomCode]
-	gamesMutex.RUnlock()
-
-	if !exists {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-		return
-	}
-
-	// Get player ID from cookie
-	playerID := ""
-	cookie, err := r.Cookie("player_id")
-	if err == nil {
-		playerID = cookie.Value
-	}
-
-	game.mu.RLock()
-	defer game.mu.RUnlock()
-
-	// Find spy
-	var spy *Player
-	for _, p := range game.Players {
-		if p.ID == game.SpyID {
-			spy = p
-			break
-		}
-	}
-
-	// Count votes
-	voteCount := make(map[string]int)
-	votedCorrectly := make(map[string]bool)
-	for voterID, suspectID := range game.Votes {
-		voteCount[suspectID]++
-		votedCorrectly[voterID] = (suspectID == game.SpyID)
-	}
-
-	// Find who got the most votes
-	maxVotes := 0
-	var playersWithMaxVotes []string
-	for playerID, count := range voteCount {
-		if count > maxVotes {
-			maxVotes = count
-			playersWithMaxVotes = []string{playerID}
-		} else if count == maxVotes {
-			playersWithMaxVotes = append(playersWithMaxVotes, playerID)
-		}
-	}
-
-	// Determine outcome
-	mostVotedID := ""
-	innocentWon := false
-	isTie := len(playersWithMaxVotes) > 1
-
-	if !isTie && len(playersWithMaxVotes) == 1 {
-		mostVotedID = playersWithMaxVotes[0]
-		innocentWon = (mostVotedID == game.SpyID)
-	}
-
-	data := struct {
-		RoomCode       string
-		Location       *Location
-		Spy            *Player
-		Players        []*Player
-		Votes          map[string]string
-		VoteCount      map[string]int
-		VotedCorrectly map[string]bool
-		MostVoted      string
-		InnocentWon    bool
-		IsTie          bool
-		VoteRounds     int
-		PlayerID       string
-		Host           string
-	}{
-		RoomCode:       game.RoomCode,
-		Location:       game.Location,
-		Spy:            spy,
-		Players:        game.Players,
-		Votes:          game.Votes,
-		VoteCount:      voteCount,
-		VotedCorrectly: votedCorrectly,
-		MostVoted:      mostVotedID,
-		InnocentWon:    innocentWon,
-		IsTie:          isTie,
-		VoteRounds:     game.VoteRound,
-		PlayerID:       playerID,
-		Host:           game.Host,
-	}
-
-	templates.ExecuteTemplate(w, "results.html", data)
-}
-
-// handleRestartGame starts a new game with the same players
-func handleRestartGame(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	roomCode := strings.TrimPrefix(r.URL.Path, "/restart/")
-
-	if roomCode == "" {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-		return
-	}
-
-	gamesMutex.RLock()
-	game, exists := games[roomCode]
-	gamesMutex.RUnlock()
-
-	if !exists {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-		return
-	}
-
-	// Get player ID from cookie
-	cookie, err := r.Cookie("player_id")
-	if err != nil {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-		return
-	}
-	playerID := cookie.Value
-
-	game.mu.Lock()
-
-	// Reset player state
-	for _, p := range game.Players {
-		p.HasConfirmedRole = false
-		p.IsSpy = false
-		p.Challenge = ""
-	}
-
-	// Reset game state
-	game.ReadyForRole = make(map[string]bool)
-	game.ReadyToVote = make(map[string]bool)
-	game.Votes = make(map[string]string)
-	game.VoteRound = 0
-	game.StartTime = time.Time{}
-	game.FirstQuestioner = ""
-
-	// Assign new location
-	game.Location = &locations[rand.Intn(len(locations))]
-
-	// Assign new spy
-	spyIndex := rand.Intn(len(game.Players))
-	game.SpyID = game.Players[spyIndex].ID
-	game.Players[spyIndex].IsSpy = true
-
-	// Assign new challenges
-	shuffledChallenges := make([]string, len(challenges))
-	copy(shuffledChallenges, challenges)
-	rand.Shuffle(len(shuffledChallenges), func(i, j int) {
-		shuffledChallenges[i], shuffledChallenges[j] = shuffledChallenges[j], shuffledChallenges[i]
-	})
-
-	for i, player := range game.Players {
-		player.Challenge = shuffledChallenges[i%len(shuffledChallenges)]
-	}
-
-	// Start new game at ready check
-	game.Status = StatusReadyCheck
-	game.mu.Unlock()
-
-	// Broadcast update to all clients
-	game.broadcast("event: game-restarted\ndata: restarted")
-
-	// Redirect to game
-	w.Header().Set("HX-Redirect", fmt.Sprintf("/game/%s/%s", roomCode, playerID))
-	w.WriteHeader(http.StatusOK)
-}
-
-// Helper functions
-
-func (g *Game) timeRemaining() time.Duration {
-	const gameDuration = 10 * time.Minute
-	elapsed := time.Since(g.StartTime)
-	remaining := gameDuration - elapsed
-	if remaining < 0 {
-		return 0
-	}
-	return remaining
-}
-
-func (g *Game) shouldStartVoting() bool {
-	// Check if time is up
-	if g.timeRemaining() <= 0 {
-		return true
-	}
-
-	// Check if at least 50% ready
-	readyCount := 0
-	for _, ready := range g.ReadyToVote {
-		if ready {
-			readyCount++
-		}
-	}
-
-	threshold := float64(len(g.Players)) * 0.5
-	return float64(readyCount) >= threshold
-}
-
-func formatDuration(d time.Duration) string {
-	d = d.Round(time.Second)
-	minutes := int(d.Minutes())
-	seconds := int(d.Seconds()) % 60
-	return fmt.Sprintf("%d:%02d", minutes, seconds)
 }
