@@ -5,23 +5,47 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lobby - You Are Officially Sus</title>
     <link rel="stylesheet" href="/static/style.css">
-    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-    <script src="https://unpkg.com/htmx.org@1.9.10/dist/ext/sse.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js" integrity="sha384-/TgkGk7p307TH7EXJDuUlgG3Ce1UVolAOFopFekQkkXihi5u/6OCvVKyz1W+idaz" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/htmx-ext-sse@2.2.4" integrity="sha384-A986SAtodyH8eg8x8irJnYUk7i9inVQqYigD6qZ9evobksGNIXfeFvDwLSHcp31N" crossorigin="anonymous"></script>
     <script>
         // Listen for game start and redirect all players
         document.addEventListener('DOMContentLoaded', function() {
             const playerID = '{{.PlayerID}}';
             const roomCode = '{{.RoomCode}}';
+            let sseSource = null;
+            
+            // Capture the EventSource when SSE connection opens (HTMX 2.0 feature)
+            document.body.addEventListener('htmx:sseOpen', function(evt) {
+                sseSource = evt.detail.source;
+                console.log('SSE connection established for lobby');
+            });
             
             // Use HTMX event listener for SSE messages
             document.body.addEventListener('htmx:sseMessage', function(evt) {
                 // Check if this is a game-started event by checking the SSE event type
                 if (evt.detail && evt.detail.type === 'game-started') {
-                    window.location.href = `/game/${roomCode}/${playerID}`;
+                    // Clean up SSE connection before navigation using the captured EventSource
+                    if (sseSource) {
+                        sseSource.close();
+                        sseSource = null;
+                        console.log('SSE connection closed before navigating to game');
+                    }
+                    // Navigate after a tiny delay to ensure cleanup completes
+                    setTimeout(() => {
+                        window.location.href = `/game/${roomCode}/${playerID}`;
+                    }, 50);
                 }
                 // Check if this is a lobby-closed event
                 if (evt.detail && evt.detail.type === 'lobby-closed') {
-                    window.location.href = '/';
+                    // Clean up SSE connection before navigation
+                    if (sseSource) {
+                        sseSource.close();
+                        sseSource = null;
+                        console.log('SSE connection closed before navigating home');
+                    }
+                    setTimeout(() => {
+                        window.location.href = '/';
+                    }, 50);
                 }
             });
         });
