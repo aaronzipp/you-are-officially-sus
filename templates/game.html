@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>You Are Officially Sus</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js" integrity="sha384-/TgkGk7p307TH7EXJDuUlgG3Ce1UVolAOFopFekQkkXihi5u/6OCvVKyz1W+idaz" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/htmx-ext-sse@2.2.4" integrity="sha384-A986SAtodyH8eg8x8irJnYUk7i9inVQqYigD6qZ9evobksGNIXfeFvDwLSHcp31N" crossorigin="anonymous"></script>
+    <script>
+        // Handle phase visibility and SSE events
+        document.addEventListener('DOMContentLoaded', function() {
+            const playerID = '{{.PlayerID}}';
+            const roomCode = '{{.RoomCode}}';
+            let sseSource = null;
+            
+            // Show only the current phase
+            function showPhase(phase) {
+                document.querySelectorAll('.game-phase').forEach(el => el.style.display = 'none');
+                const phaseEl = document.getElementById('phase-' + phase);
+                if (phaseEl) phaseEl.style.display = 'block';
+            }
+            
+            // Initialize with current phase
+            showPhase('{{.Status}}');
+            
+            // Capture the EventSource when SSE connection opens (HTMX 2.0 feature)
+            document.body.addEventListener('htmx:sseOpen', function(evt) {
+                sseSource = evt.detail.source;
+                console.log('SSE connection established for game');
+            });
+            
+            // Handle SSE connection errors
+            document.body.addEventListener('htmx:sseError', function(evt) {
+                console.error('SSE connection error:', evt.detail);
+            });
+            
+            // Handle SSE messages that require custom JavaScript (phase changes and navigation)
+            document.body.addEventListener('htmx:sseMessage', function(evt) {
+                const eventType = evt.detail.type;
+                const data = evt.detail.data;
+                
+                console.log('SSE event:', eventType, data);
+                
+                switch(eventType) {
+                    case 'lobby-not-found':
+                        // Handle lobby not found - clean up and redirect
+                        if (sseSource) {
+                            sseSource.close();
+                            sseSource = null;
+                            console.log('Lobby not found, redirecting to home');
+                        }
+                        setTimeout(() => {
+                            window.location.href = '/';
+                        }, 50);
+                        break;
+                        
+                    case 'phase-change':
+                        // Handle phase changes - data is plain text phase name
+                        if (data) {
+                            showPhase(data);
+                        }
+                        break;
+                        
+                    case 'game-finished':
+                        // Handle game finished - clean up and redirect
+                        if (sseSource) {
+                            sseSource.close();
+                            sseSource = null;
+                            console.log('SSE connection closed before navigating to results');
+                        }
+                        setTimeout(() => {
+                            window.location.href = `/results/${roomCode}/${playerID}`;
+                        }, 50);
+                        break;
+                        
+                    case 'lobby-closed':
+                        // Handle lobby closed - clean up and redirect
+                        if (sseSource) {
+                            sseSource.close();
+                            sseSource = null;
+                            console.log('SSE connection closed before navigating home');
+                        }
+                        setTimeout(() => {
+                            window.location.href = '/';
+                        }, 50);
+                        break;
+                }
+            });
+        });
+    </script>
+</head>
+<body hx-ext="sse" sse-connect="/sse/{{.RoomCode}}/{{.PlayerID}}">
+    <!-- Hidden elements to register SSE events with HTMX -->
+    <div style="display:none;" sse-swap="lobby-not-found"></div>
+    <div style="display:none;" sse-swap="phase-change"></div>
+    <div style="display:none;" sse-swap="game-finished"></div>
+    <div style="display:none;" sse-swap="lobby-closed"></div>
+    
+    <div class="container">
+        <!-- Phase 1: Ready Check -->
+        <div id="phase-ready_check" class="game-phase">
+            <header>
+                <h1>Get Ready!</h1>
+                <p class="subtitle">You are about to see your role</p>
+            </header>
+
+            <main>
+                <div class="card">
+                    <p style="font-size: 1.2rem; margin-bottom: 2rem;">
+                        Make sure you're in a private spot where others can't see your screen.
+                    </p>
+                    <p class="text-muted" style="margin-bottom: 2rem;">
+                        Once you click "I'm Ready", your role and challenge will be revealed.
+                    </p>
+                </div>
+
+                <div class="card" style="text-align: center;" id="ready-count-check" sse-swap="ready-count">
+                    <p class="ready-count">0/{{.TotalPlayers}} players ready</p>
+                </div>
+
+                <form hx-post="/ready/{{.RoomCode}}/{{.PlayerID}}" 
+                      hx-target="#ready-button-check"
+                      hx-swap="outerHTML">
+                    {{if .IsReady}}
+                    <button id="ready-button-check" type="submit" class="btn btn-success">✓ Ready - Waiting for others...</button>
+                    {{else}}
+                    <button id="ready-button-check" type="submit" class="btn btn-primary">I'm Ready to See My Role</button>
+                    {{end}}
+                </form>
+
+                <div class="card">
+                    <p class="room-code-small">Room: <strong>{{.RoomCode}}</strong></p>
+                </div>
+            </main>
+        </div>
+
+        <!-- Phase 2: Role Reveal -->
+        <div id="phase-role_reveal" class="game-phase">
+            <main>
+                <div class="role-card {{if .IsSpy}}spy{{else}}innocent{{end}}">
+                    {{if .IsSpy}}
+                    <h1 class="role-title">You are the SPY</h1>
+                    <div class="role-info">
+                        <p class="label">Category:</p>
+                        <p class="value">{{index .Location.Categories 0}}</p>
+                    </div>
+                    {{else}}
+                    <h1 class="role-title">You are NOT the spy</h1>
+                    <div class="role-info">
+                        <p class="label">Location:</p>
+                        <p class="value">{{.Location.Word}}</p>
+                    </div>
+                    {{end}}
+
+                    <div class="challenge-info">
+                        <p class="label">Your Challenge:</p>
+                        <p class="value">{{.Challenge}}</p>
+                    </div>
+
+                    <form hx-post="/ready/{{.RoomCode}}/{{.PlayerID}}" 
+                          hx-target="#ready-button-role"
+                          hx-swap="outerHTML">
+                        {{if .IsReady}}
+                        <button id="ready-button-role" type="submit" class="btn btn-success">✓ Waiting for others...</button>
+                        {{else}}
+                        <button id="ready-button-role" type="submit" class="btn btn-primary">I've Seen My Role ✓</button>
+                        {{end}}
+                    </form>
+                </div>
+
+                <div class="info-card">
+                    <p>Remember your role and challenge, then confirm to continue!</p>
+                </div>
+            </main>
+        </div>
+
+        <!-- Phase 3: Playing -->
+        <div id="phase-playing" class="game-phase">
+            <header>
+                <div id="timer-display" class="timer-display" sse-swap="timer-update">
+                    <span>Time Remaining:</span>
+                    <strong>{{.TimeRemaining}}</strong>
+                </div>
+            </header>
+
+            <main>
+                {{if .FirstQuestioner}}
+                <div class="card">
+                    <p class="first-questioner">{{range .Players}}{{if eq .ID $.FirstQuestioner}}{{.Name}}{{end}}{{end}} asks the first question!</p>
+                </div>
+                {{end}}
+
+                <div class="card">
+                    <div class="challenge-info">
+                        <p class="label">Your Challenge:</p>
+                        <p class="value">{{.Challenge}}</p>
+                    </div>
+                </div>
+
+                <div class="card" id="ready-count-playing" sse-swap="ready-count">
+                    <div class="ready-section">
+                        <p class="ready-count">0/{{.TotalPlayers}} players ready to vote</p>
+                        <form hx-post="/ready/{{.RoomCode}}/{{.PlayerID}}" 
+                              hx-target="#ready-button-playing"
+                              hx-swap="outerHTML">
+                            {{if .IsReady}}
+                            <button id="ready-button-playing" type="submit" class="btn btn-success">✓ Ready to Vote</button>
+                            {{else}}
+                            <button id="ready-button-playing" type="submit" class="btn btn-secondary">Ready to Vote?</button>
+                            {{end}}
+                        </form>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <p class="room-code-small">Room: <strong>{{.RoomCode}}</strong></p>
+                </div>
+            </main>
+
+            <footer>
+                <p>Ask questions and try to complete your challenge!</p>
+            </footer>
+        </div>
+
+        <!-- Phase 4: Voting -->
+        <div id="phase-voting" class="game-phase">
+            <header>
+                <h1>Who is the spy?</h1>
+                {{if gt .VoteRound 1}}
+                <p class="subtitle" style="color: var(--warning);">There was a tie! Vote again - Round {{.VoteRound}}</p>
+                {{else}}
+                <p class="subtitle">Cast your vote carefully</p>
+                {{end}}
+            </header>
+
+            <main>
+                <div id="vote-count" class="card" style="text-align: center;" sse-swap="vote-count">
+                    <p class="ready-count">0/{{.TotalPlayers}} players have voted</p>
+                </div>
+
+                <div id="voting-content">
+                    {{if .HasVoted}}
+                    <div class="card">
+                        <p class="vote-status">✓ You voted</p>
+                        <p class="text-muted">Waiting for other players to vote...</p>
+                    </div>
+                    {{else}}
+                    <div class="card">
+                        <p class="text-muted">Select who you think is the spy:</p>
+                    </div>
+                    <div class="voting-grid">
+                        {{range $index, $player := .Players}}
+                        {{if ne $player.ID $.PlayerID}}
+                        <form hx-post="/vote/{{$.RoomCode}}/{{$.PlayerID}}" 
+                              hx-target="#voting-content"
+                              hx-swap="innerHTML"
+                              class="vote-option">
+                            <input type="hidden" name="suspect" value="{{$player.ID}}">
+                            <button type="submit" class="btn btn-vote">
+                                {{$player.Name}}
+                            </button>
+                        </form>
+                        {{end}}
+                        {{end}}
+                    </div>
+                    {{end}}
+                </div>
+
+                <div class="card">
+                    <p class="room-code-small">Room: <strong>{{.RoomCode}}</strong></p>
+                </div>
+            </main>
+        </div>
+    </div>
+</body>
+</html>
