@@ -125,7 +125,7 @@
                     {{if .IsReady}}
                     <button id="ready-button-check" type="submit" class="btn btn-success">✓ Ready - Waiting for others...</button>
                     {{else}}
-                    <button id="ready-button-check" type="submit" class="btn btn-primary">I'm Ready to See My Role</button>
+                    <button id="ready-button-check" type="submit" class="btn btn-primary" onclick="this.className='btn btn-success'; this.innerText='✓ Ready - Waiting for others...'">I'm Ready to See My Role</button>
                     {{end}}
                 </form>
 
@@ -164,7 +164,7 @@
                         {{if .IsReady}}
                         <button id="ready-button-role" type="submit" class="btn btn-success">✓ Waiting for others...</button>
                         {{else}}
-                        <button id="ready-button-role" type="submit" class="btn btn-primary">I've Seen My Role ✓</button>
+                        <button id="ready-button-role" type="submit" class="btn btn-primary" onclick="this.className='btn btn-success'; this.innerText='✓ Waiting for others...'">I've Seen My Role ✓</button>
                         {{end}}
                     </form>
                 </div>
@@ -212,7 +212,7 @@
                     {{if .IsReady}}
                     <button id="ready-button-playing" type="submit" class="btn btn-success">✓ Ready to Vote</button>
                     {{else}}
-                    <button id="ready-button-playing" type="submit" class="btn btn-secondary">Ready to Vote?</button>
+                    <button id="ready-button-playing" type="submit" class="btn btn-secondary" onclick="this.className='btn btn-success'; this.innerText='✓ Ready to Vote'">Ready to Vote?</button>
                     {{end}}
                 </form>
 
