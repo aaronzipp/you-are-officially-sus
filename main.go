@@ -277,6 +277,33 @@ func (l *Lobby) renderScoreTable() string {
 	return html
 }
 
+// renderReadyCount generates HTML for ready count display
+func (l *Lobby) renderReadyCount(ready, total int, phase GameStatus) string {
+	var text string
+	switch phase {
+	case StatusReadyCheck:
+		text = fmt.Sprintf("%d/%d players ready", ready, total)
+	case StatusRoleReveal:
+		text = fmt.Sprintf("%d/%d players ready", ready, total)
+	case StatusPlaying:
+		text = fmt.Sprintf("%d/%d players ready to vote", ready, total)
+	default:
+		text = fmt.Sprintf("%d/%d players ready", ready, total)
+	}
+	return fmt.Sprintf(`<p class="ready-count">%s</p>`, text)
+}
+
+// renderTimerUpdate generates HTML for timer display
+func renderTimerUpdate(timeStr string) string {
+	return fmt.Sprintf(`<span>Time Remaining:</span>
+<strong>%s</strong>`, timeStr)
+}
+
+// renderVoteCount generates HTML for vote count display
+func renderVoteCount(count, total int) string {
+	return fmt.Sprintf(`<p class="ready-count">%d/%d players have voted</p>`, count, total)
+}
+
 // ===== Utility Functions =====
 
 // generateRoomCode creates a random 6-character room code
@@ -524,10 +551,10 @@ func handleSSE(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		totalPlayers := len(lobby.Players)
-		readyData := fmt.Sprintf(`{"ready":%d,"total":%d}`, readyCount, totalPlayers)
+		readyHTML := lobby.renderReadyCount(readyCount, totalPlayers, game.Status)
 		lobby.mu.RUnlock()
-		log.Printf("handleSSE: sending initial ready-count to player %s: %s", playerID, readyData)
-		fmt.Fprintf(w, "event: ready-count\ndata: %s\n\n", readyData)
+		log.Printf("handleSSE: sending initial ready-count to player %s: %s", playerID, readyHTML)
+		fmt.Fprintf(w, "event: ready-count\ndata: %s\n\n", readyHTML)
 	} else {
 		// No game - send lobby data
 		playerListHTML := lobby.renderPlayerList()
@@ -948,7 +975,7 @@ func handleReady(w http.ResponseWriter, r *http.Request) {
 		switch game.Status {
 		case StatusReadyCheck:
 			game.Status = StatusRoleReveal
-			phaseChangeMsg = `{"phase":"role_reveal"}`
+			phaseChangeMsg = "role_reveal"
 			shouldBroadcastPhase = true
 		case StatusRoleReveal:
 			game.Status = StatusPlaying
@@ -959,7 +986,7 @@ func handleReady(w http.ResponseWriter, r *http.Request) {
 				playerIDs = append(playerIDs, id)
 			}
 			game.FirstQuestioner = playerIDs[rand.Intn(len(playerIDs))]
-			phaseChangeMsg = `{"phase":"playing"}`
+			phaseChangeMsg = "playing"
 			shouldBroadcastPhase = true
 			// Start timer goroutine AFTER releasing lock
 			go game.runTimer(lobby)
@@ -970,7 +997,7 @@ func handleReady(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Prepare ready count message (using count calculated before potential reset)
-	readyCountMsg = fmt.Sprintf(`{"ready":%d,"total":%d}`, readyCount, len(lobby.Players))
+	readyCountMsg = lobby.renderReadyCount(readyCount, len(lobby.Players), game.Status)
 
 	// Prepare button HTML based on current game status
 	buttonID := "ready-button-check"
@@ -1117,7 +1144,8 @@ func handleVote(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Broadcast vote count
-	lobby.broadcastSSE("vote-count", fmt.Sprintf(`{"count":%d,"total":%d}`, len(game.Votes), len(lobby.Players)))
+	voteCountHTML := renderVoteCount(len(game.Votes), len(lobby.Players))
+	lobby.broadcastSSE("vote-count", voteCountHTML)
 
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -1225,7 +1253,7 @@ func (g *Game) runTimer(lobby *Lobby) {
 				lobby.mu.Lock()
 				if g.Status == StatusPlaying {
 					g.Status = StatusVoting
-					lobby.broadcastSSE("phase-change", `{"phase":"voting"}`)
+					lobby.broadcastSSE("phase-change", "voting")
 				}
 				lobby.mu.Unlock()
 				return
@@ -1235,7 +1263,8 @@ func (g *Game) runTimer(lobby *Lobby) {
 			minutes := int(remaining.Minutes())
 			seconds := int(remaining.Seconds()) % 60
 			timeStr := fmt.Sprintf("%d:%02d", minutes, seconds)
-			lobby.broadcastSSE("timer-update", fmt.Sprintf(`{"time":"%s"}`, timeStr))
+			timerHTML := renderTimerUpdate(timeStr)
+			lobby.broadcastSSE("timer-update", timerHTML)
 		}
 	}
 }
