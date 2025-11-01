@@ -71,17 +71,19 @@ type Lobby struct {
 
 // Game represents an active game session (ephemeral)
 type Game struct {
-	Lobby           *Lobby
-	Location        *Location
-	SpyID           string
-	FirstQuestioner string                     // Player ID of who asks the first question
-	PlayerInfo      map[string]*GamePlayerInfo // game-specific player data
-	Status          GameStatus
-	StartTime       time.Time
-	ReadyStates     map[string]bool // unified for all ready phases
-	Votes           map[string]string
-	VoteRound       int       // Track voting rounds for tie-breaking
-	timerDone       chan bool // Signal to stop timer goroutine
+	Lobby            *Lobby
+	Location         *Location
+	SpyID            string
+	FirstQuestioner  string                     // Player ID of who asks the first question
+	PlayerInfo       map[string]*GamePlayerInfo // game-specific player data
+	Status           GameStatus
+	StartTime        time.Time
+	ReadyToReveal    map[string]bool // Phase 1: Ready to see role (all players required)
+	ReadyAfterReveal map[string]bool // Phase 2: Confirmed saw role (all players required)
+	ReadyToVote      map[string]bool // Phase 3: Ready to vote (>50% required)
+	Votes            map[string]string
+	VoteRound        int       // Track voting rounds for tie-breaking
+	timerDone        chan bool // Signal to stop timer goroutine
 }
 
 // Global storage
@@ -277,19 +279,21 @@ func (l *Lobby) renderScoreTable() string {
 	return html
 }
 
-// renderReadyCount generates HTML for ready count display
-func (l *Lobby) renderReadyCount(ready, total int, phase GameStatus) string {
-	var text string
-	switch phase {
-	case StatusReadyCheck:
-		text = fmt.Sprintf("%d/%d players ready", ready, total)
-	case StatusRoleReveal:
-		text = fmt.Sprintf("%d/%d players ready", ready, total)
-	case StatusPlaying:
-		text = fmt.Sprintf("%d/%d players ready to vote", ready, total)
-	default:
-		text = fmt.Sprintf("%d/%d players ready", ready, total)
-	}
+// renderReadyCountCheck generates HTML for Phase 1 ready count display
+func (l *Lobby) renderReadyCountCheck(ready, total int) string {
+	text := fmt.Sprintf("%d/%d players ready", ready, total)
+	return fmt.Sprintf(`<p class="ready-count">%s</p>`, text)
+}
+
+// renderReadyCountReveal generates HTML for Phase 2 ready count display
+func (l *Lobby) renderReadyCountReveal(ready, total int) string {
+	text := fmt.Sprintf("%d/%d players ready", ready, total)
+	return fmt.Sprintf(`<p class="ready-count">%s</p>`, text)
+}
+
+// renderReadyCountPlaying generates HTML for Phase 3 ready count display
+func (l *Lobby) renderReadyCountPlaying(ready, total int) string {
+	text := fmt.Sprintf("%d/%d players ready to vote", ready, total)
 	return fmt.Sprintf(`<p class="ready-count">%s</p>`, text)
 }
 
@@ -551,19 +555,45 @@ func handleSSE(w http.ResponseWriter, r *http.Request) {
 	lobby.mu.RLock()
 	gameInProgress := lobby.CurrentGame != nil
 	if gameInProgress {
-		// Game in progress - send ready count
+		// Game in progress - send ready count with phase-specific event
 		game := lobby.CurrentGame
 		readyCount := 0
-		for _, ready := range game.ReadyStates {
-			if ready {
-				readyCount++
+		var readyHTML string
+		var eventName string
+
+		// Count from appropriate ready state map based on game phase
+		switch game.Status {
+		case StatusReadyCheck:
+			for _, ready := range game.ReadyToReveal {
+				if ready {
+					readyCount++
+				}
 			}
+			totalPlayers := len(lobby.Players)
+			readyHTML = lobby.renderReadyCountCheck(readyCount, totalPlayers)
+			eventName = "ready-count-check"
+		case StatusRoleReveal:
+			for _, ready := range game.ReadyAfterReveal {
+				if ready {
+					readyCount++
+				}
+			}
+			totalPlayers := len(lobby.Players)
+			readyHTML = lobby.renderReadyCountReveal(readyCount, totalPlayers)
+			eventName = "ready-count-reveal"
+		case StatusPlaying:
+			for _, ready := range game.ReadyToVote {
+				if ready {
+					readyCount++
+				}
+			}
+			totalPlayers := len(lobby.Players)
+			readyHTML = lobby.renderReadyCountPlaying(readyCount, totalPlayers)
+			eventName = "ready-count-playing"
 		}
-		totalPlayers := len(lobby.Players)
-		readyHTML := lobby.renderReadyCount(readyCount, totalPlayers, game.Status)
 		lobby.mu.RUnlock()
-		log.Printf("handleSSE: sending initial ready-count to player %s: %s", playerID, readyHTML)
-		fmt.Fprintf(w, "event: ready-count\ndata: %s\n\n", readyHTML)
+		log.Printf("handleSSE: sending initial %s to player %s: %s", eventName, playerID, readyHTML)
+		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", eventName, readyHTML)
 	} else {
 		// No game - send lobby data
 		playerListHTML := lobby.renderPlayerList()
@@ -657,6 +687,17 @@ func handleGame(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Determine if player is ready based on current game phase
+	isReady := false
+	switch game.Status {
+	case StatusReadyCheck:
+		isReady = game.ReadyToReveal[playerID]
+	case StatusRoleReveal:
+		isReady = game.ReadyAfterReveal[playerID]
+	case StatusPlaying:
+		isReady = game.ReadyToVote[playerID]
+	}
+
 	data := struct {
 		RoomCode        string
 		PlayerID        string
@@ -680,7 +721,7 @@ func handleGame(w http.ResponseWriter, r *http.Request) {
 		Location:        game.Location,
 		Challenge:       playerInfo.Challenge,
 		IsSpy:           playerInfo.IsSpy,
-		IsReady:         game.ReadyStates[playerID],
+		IsReady:         isReady,
 		HasVoted:        game.Votes[playerID] != "",
 		VoteRound:       game.VoteRound,
 		FirstQuestioner: game.FirstQuestioner,
@@ -864,14 +905,16 @@ func handleStartGame(w http.ResponseWriter, r *http.Request) {
 
 	// Create new game
 	game := &Game{
-		Lobby:       lobby,
-		Location:    &locations[rand.Intn(len(locations))],
-		PlayerInfo:  make(map[string]*GamePlayerInfo),
-		Status:      StatusReadyCheck,
-		ReadyStates: make(map[string]bool),
-		Votes:       make(map[string]string),
-		VoteRound:   1,
-		timerDone:   make(chan bool),
+		Lobby:            lobby,
+		Location:         &locations[rand.Intn(len(locations))],
+		PlayerInfo:       make(map[string]*GamePlayerInfo),
+		Status:           StatusReadyCheck,
+		ReadyToReveal:    make(map[string]bool),
+		ReadyAfterReveal: make(map[string]bool),
+		ReadyToVote:      make(map[string]bool),
+		Votes:            make(map[string]string),
+		VoteRound:        1,
+		timerDone:        make(chan bool),
 	}
 
 	// Assign spy
@@ -955,31 +998,60 @@ func handleReady(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("handleReady: toggling ready state for player %s in phase %s", playerID, game.Status)
 
-	// Toggle ready state
-	game.ReadyStates[playerID] = !game.ReadyStates[playerID]
-	isReady := game.ReadyStates[playerID]
+	// Toggle ready state in the appropriate map based on current phase
+	var isReady bool
+	var readyStateMap map[string]bool
 
-	// Check if all players are ready
-	allReady := true
-	for id := range lobby.Players {
-		if !game.ReadyStates[id] {
-			allReady = false
-			break
-		}
+	switch game.Status {
+	case StatusReadyCheck:
+		readyStateMap = game.ReadyToReveal
+		game.ReadyToReveal[playerID] = !game.ReadyToReveal[playerID]
+		isReady = game.ReadyToReveal[playerID]
+	case StatusRoleReveal:
+		readyStateMap = game.ReadyAfterReveal
+		game.ReadyAfterReveal[playerID] = !game.ReadyAfterReveal[playerID]
+		isReady = game.ReadyAfterReveal[playerID]
+	case StatusPlaying:
+		readyStateMap = game.ReadyToVote
+		game.ReadyToVote[playerID] = !game.ReadyToVote[playerID]
+		isReady = game.ReadyToVote[playerID]
+	default:
+		lobby.mu.Unlock()
+		http.Error(w, "Invalid game phase", http.StatusBadRequest)
+		return
 	}
 
-	// Count ready players BEFORE potentially resetting
+	// Count ready players
 	readyCount := 0
-	for _, ready := range game.ReadyStates {
+	for _, ready := range readyStateMap {
 		if ready {
 			readyCount++
 		}
 	}
+	totalPlayers := len(lobby.Players)
 
-	log.Printf("handleReady: ready count %d/%d, allReady=%v", readyCount, len(lobby.Players), allReady)
+	log.Printf("handleReady: ready count %d/%d in phase %s", readyCount, totalPlayers, game.Status)
 
-	if allReady {
-		log.Printf("handleReady: all players ready, advancing from phase %s", game.Status)
+	// Check if we should advance phase based on readiness
+	shouldAdvance := false
+
+	if game.Status == StatusReadyCheck || game.Status == StatusRoleReveal {
+		// For ready check and role reveal, ALL players must be ready
+		allReady := true
+		for id := range lobby.Players {
+			if !readyStateMap[id] {
+				allReady = false
+				break
+			}
+		}
+		shouldAdvance = allReady
+	} else if game.Status == StatusPlaying {
+		// For voting readiness, more than 50% of players must be ready
+		shouldAdvance = readyCount > totalPlayers/2
+	}
+
+	if shouldAdvance {
+		log.Printf("handleReady: advancing from phase %s", game.Status)
 		// Advance game state based on current status
 		switch game.Status {
 		case StatusReadyCheck:
@@ -999,14 +1071,47 @@ func handleReady(w http.ResponseWriter, r *http.Request) {
 			shouldBroadcastPhase = true
 			// Start timer goroutine AFTER releasing lock
 			go game.runTimer(lobby)
+		case StatusPlaying:
+			game.Status = StatusVoting
+			phaseChangeMsg = "voting"
+			shouldBroadcastPhase = true
 		}
-		// Reset ready states for next phase
-		game.ReadyStates = make(map[string]bool)
 		log.Printf("handleReady: advanced to phase %s", game.Status)
+
+		// IMPORTANT: Recalculate readyCount from the NEW phase's map after transition
+		readyCount = 0
+		switch game.Status {
+		case StatusRoleReveal:
+			for _, ready := range game.ReadyAfterReveal {
+				if ready {
+					readyCount++
+				}
+			}
+		case StatusPlaying:
+			for _, ready := range game.ReadyToVote {
+				if ready {
+					readyCount++
+				}
+			}
+		case StatusVoting:
+			// No ready count needed for voting phase
+			readyCount = 0
+		}
 	}
 
-	// Prepare ready count message (using count calculated before potential reset)
-	readyCountMsg = lobby.renderReadyCount(readyCount, len(lobby.Players), game.Status)
+	// Prepare ready count message with phase-specific event name
+	var readyCountEventName string
+	switch game.Status {
+	case StatusReadyCheck:
+		readyCountMsg = lobby.renderReadyCountCheck(readyCount, len(lobby.Players))
+		readyCountEventName = "ready-count-check"
+	case StatusRoleReveal:
+		readyCountMsg = lobby.renderReadyCountReveal(readyCount, len(lobby.Players))
+		readyCountEventName = "ready-count-reveal"
+	case StatusPlaying:
+		readyCountMsg = lobby.renderReadyCountPlaying(readyCount, len(lobby.Players))
+		readyCountEventName = "ready-count-playing"
+	}
 
 	// Prepare button HTML based on current game status
 	buttonID := "ready-button-check"
@@ -1052,8 +1157,8 @@ func handleReady(w http.ResponseWriter, r *http.Request) {
 		lobby.broadcastSSE("phase-change", phaseChangeMsg)
 	}
 
-	log.Printf("handleReady: broadcasting ready-count: %s", readyCountMsg)
-	lobby.broadcastSSE("ready-count", readyCountMsg)
+	log.Printf("handleReady: broadcasting %s: %s", readyCountEventName, readyCountMsg)
+	lobby.broadcastSSE(readyCountEventName, readyCountMsg)
 
 	log.Printf("handleReady: sending button HTML response")
 	w.Header().Set("Content-Type", "text/html")

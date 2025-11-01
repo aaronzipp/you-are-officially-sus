@@ -115,7 +115,7 @@
                     </p>
                 </div>
 
-                <div class="card" style="text-align: center;" id="ready-count-check" sse-swap="ready-count">
+                <div class="card" style="text-align: center;" id="ready-count-check" sse-swap="ready-count-check">
                     <p class="ready-count">0/{{.TotalPlayers}} players ready</p>
                 </div>
 
@@ -169,6 +169,10 @@
                     </form>
                 </div>
 
+                <div class="card" style="text-align: center;" id="ready-count-reveal" sse-swap="ready-count-reveal">
+                    <p class="ready-count">0/{{.TotalPlayers}} players ready</p>
+                </div>
+
                 <div class="info-card">
                     <p>Remember your role and challenge, then confirm to continue!</p>
                 </div>
@@ -198,20 +202,19 @@
                     </div>
                 </div>
 
-                <div class="card" id="ready-count-playing" sse-swap="ready-count">
-                    <div class="ready-section">
-                        <p class="ready-count">0/{{.TotalPlayers}} players ready to vote</p>
-                        <form hx-post="/ready/{{.RoomCode}}/{{.PlayerID}}" 
-                              hx-target="#ready-button-playing"
-                              hx-swap="outerHTML">
-                            {{if .IsReady}}
-                            <button id="ready-button-playing" type="submit" class="btn btn-success">✓ Ready to Vote</button>
-                            {{else}}
-                            <button id="ready-button-playing" type="submit" class="btn btn-secondary">Ready to Vote?</button>
-                            {{end}}
-                        </form>
-                    </div>
+                <div class="card" style="text-align: center;" id="ready-count-playing" sse-swap="ready-count-playing">
+                    <p class="ready-count">0/{{.TotalPlayers}} players ready to vote</p>
                 </div>
+
+                <form hx-post="/ready/{{.RoomCode}}/{{.PlayerID}}" 
+                      hx-target="#ready-button-playing"
+                      hx-swap="outerHTML">
+                    {{if .IsReady}}
+                    <button id="ready-button-playing" type="submit" class="btn btn-success">✓ Ready to Vote</button>
+                    {{else}}
+                    <button id="ready-button-playing" type="submit" class="btn btn-secondary">Ready to Vote?</button>
+                    {{end}}
+                </form>
 
                 <div class="card">
                     <p class="room-code-small">Room: <strong>{{.RoomCode}}</strong></p>
