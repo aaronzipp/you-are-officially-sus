@@ -308,6 +308,14 @@ func renderVoteCount(count, total int) string {
 	return fmt.Sprintf(`<p class="ready-count">%d/%d players have voted</p>`, count, total)
 }
 
+// renderVotedConfirmation generates HTML for "you voted" confirmation
+func renderVotedConfirmation() string {
+	return `<div class="card">
+		<p class="vote-status">✓ You voted</p>
+		<p class="text-muted">Waiting for other players to vote...</p>
+	</div>`
+}
+
 // ===== Utility Functions =====
 
 // generateRoomCode creates a random 6-character room code
@@ -555,10 +563,10 @@ func handleSSE(w http.ResponseWriter, r *http.Request) {
 	lobby.mu.RLock()
 	gameInProgress := lobby.CurrentGame != nil
 	if gameInProgress {
-		// Game in progress - send ready count with phase-specific event
+		// Game in progress - send ready count or vote count with phase-specific event
 		game := lobby.CurrentGame
 		readyCount := 0
-		var readyHTML string
+		var countHTML string
 		var eventName string
 
 		// Count from appropriate ready state map based on game phase
@@ -570,7 +578,7 @@ func handleSSE(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			totalPlayers := len(lobby.Players)
-			readyHTML = lobby.renderReadyCountCheck(readyCount, totalPlayers)
+			countHTML = lobby.renderReadyCountCheck(readyCount, totalPlayers)
 			eventName = "ready-count-check"
 		case StatusRoleReveal:
 			for _, ready := range game.ReadyAfterReveal {
@@ -579,7 +587,7 @@ func handleSSE(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			totalPlayers := len(lobby.Players)
-			readyHTML = lobby.renderReadyCountReveal(readyCount, totalPlayers)
+			countHTML = lobby.renderReadyCountReveal(readyCount, totalPlayers)
 			eventName = "ready-count-reveal"
 		case StatusPlaying:
 			for _, ready := range game.ReadyToVote {
@@ -588,12 +596,18 @@ func handleSSE(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			totalPlayers := len(lobby.Players)
-			readyHTML = lobby.renderReadyCountPlaying(readyCount, totalPlayers)
+			countHTML = lobby.renderReadyCountPlaying(readyCount, totalPlayers)
 			eventName = "ready-count-playing"
+		case StatusVoting:
+			// Send vote count for voting phase
+			voteCount := len(game.Votes)
+			totalPlayers := len(lobby.Players)
+			countHTML = renderVoteCount(voteCount, totalPlayers)
+			eventName = "vote-count-voting"
 		}
 		lobby.mu.RUnlock()
-		log.Printf("handleSSE: sending initial %s to player %s: %s", eventName, playerID, readyHTML)
-		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", eventName, readyHTML)
+		log.Printf("handleSSE: sending initial %s to player %s: %s", eventName, playerID, countHTML)
+		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", eventName, countHTML)
 	} else {
 		// No game - send lobby data
 		playerListHTML := lobby.renderPlayerList()
@@ -1167,6 +1181,8 @@ func handleReady(w http.ResponseWriter, r *http.Request) {
 
 // handleVote handles player votes
 func handleVote(w http.ResponseWriter, r *http.Request) {
+	log.Printf("handleVote called: %s %s", r.Method, r.URL.Path)
+
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -1183,6 +1199,8 @@ func handleVote(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	suspectID := r.FormValue("suspect")
 
+	log.Printf("handleVote: roomCode=%s playerID=%s suspectID=%s", roomCode, playerID, suspectID)
+
 	lobbiesMux.RLock()
 	lobby, exists := lobbies[roomCode]
 	lobbiesMux.RUnlock()
@@ -1192,19 +1210,27 @@ func handleVote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	lobby.mu.Lock()
-	defer lobby.mu.Unlock()
+	// Prepare messages to broadcast
+	var voteCountMsg string
+	var shouldFinish bool
+	var shouldRevote bool
+	var newVoteRound int
 
+	lobby.mu.Lock()
 	game := lobby.CurrentGame
 	if game == nil || game.Status != StatusVoting {
+		lobby.mu.Unlock()
 		http.Error(w, "Not in voting phase", http.StatusBadRequest)
 		return
 	}
 
+	// Record vote
 	game.Votes[playerID] = suspectID
+	log.Printf("handleVote: vote recorded, total votes: %d/%d", len(game.Votes), len(lobby.Players))
 
 	// Check if all players voted
 	if len(game.Votes) == len(lobby.Players) {
+		log.Printf("handleVote: all players have voted, counting results")
 		// Count votes
 		voteCount := make(map[string]int)
 		for _, votedFor := range game.Votes {
@@ -1225,11 +1251,14 @@ func handleVote(w http.ResponseWriter, r *http.Request) {
 
 		// Check for tie
 		if len(playersWithMaxVotes) > 1 && game.VoteRound < 3 {
+			log.Printf("handleVote: tie detected, starting revote (round %d -> %d)", game.VoteRound, game.VoteRound+1)
 			// Tie - revote
 			game.Votes = make(map[string]string)
 			game.VoteRound++
-			lobby.broadcastSSE("vote-tie", fmt.Sprintf("%d", game.VoteRound))
+			newVoteRound = game.VoteRound
+			shouldRevote = true
 		} else {
+			log.Printf("handleVote: game finished, updating scores")
 			// Game over - update scores
 			game.Status = StatusFinished
 
@@ -1253,19 +1282,38 @@ func handleVote(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			lobby.broadcastSSE("game-finished", "")
+			shouldFinish = true
 		}
 	}
 
-	// Broadcast vote count
-	voteCountHTML := renderVoteCount(len(game.Votes), len(lobby.Players))
-	lobby.broadcastSSE("vote-count", voteCountHTML)
+	// Prepare vote count message
+	voteCountMsg = renderVoteCount(len(game.Votes), len(lobby.Players))
 
-	w.WriteHeader(http.StatusNoContent)
+	lobby.mu.Unlock()
+
+	// Broadcast vote count update WITHOUT holding lock
+	log.Printf("handleVote: broadcasting vote count: %s", voteCountMsg)
+	lobby.broadcastSSE("vote-count-voting", voteCountMsg)
+
+	// Handle game end conditions
+	if shouldRevote {
+		log.Printf("handleVote: broadcasting vote-tie event")
+		lobby.broadcastSSE("vote-tie", fmt.Sprintf("%d", newVoteRound))
+	} else if shouldFinish {
+		log.Printf("handleVote: broadcasting game-finished event")
+		lobby.broadcastSSE("game-finished", roomCode)
+	}
+
+	// Return confirmation HTML to replace voting UI
+	log.Printf("handleVote: sending voted confirmation to player %s", playerID)
+	w.Header().Set("Content-Type", "text/html")
+	w.Write([]byte(renderVotedConfirmation()))
 }
 
 // handleRestartGame resets the game and returns to lobby
 func handleRestartGame(w http.ResponseWriter, r *http.Request) {
+	log.Printf("handleRestartGame called: %s %s", r.Method, r.URL.Path)
+
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -1282,8 +1330,24 @@ func handleRestartGame(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get player ID from cookie
+	cookie, err := r.Cookie("player_id")
+	if err != nil {
+		log.Printf("handleRestartGame: no player_id cookie")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	playerID := cookie.Value
+
 	lobby.mu.Lock()
-	defer lobby.mu.Unlock()
+
+	// Check if player is host
+	if lobby.Host != playerID {
+		lobby.mu.Unlock()
+		log.Printf("handleRestartGame: player %s is not host", playerID)
+		http.Error(w, "Only host can restart game", http.StatusForbidden)
+		return
+	}
 
 	// Stop timer if running
 	if lobby.CurrentGame != nil && lobby.CurrentGame.timerDone != nil {
@@ -1293,9 +1357,14 @@ func handleRestartGame(w http.ResponseWriter, r *http.Request) {
 	// Clear game
 	lobby.CurrentGame = nil
 
-	// Broadcast restart
-	lobby.broadcastSSE("game-restarted", "")
+	lobby.mu.Unlock()
 
+	log.Printf("handleRestartGame: game cleared, broadcasting game-restarted event")
+
+	// Broadcast restart WITHOUT holding lock
+	lobby.broadcastSSE("game-restarted", roomCode)
+
+	log.Printf("handleRestartGame: sending redirect response")
 	w.Header().Set("HX-Redirect", "/lobby/"+roomCode)
 	w.WriteHeader(http.StatusOK)
 }

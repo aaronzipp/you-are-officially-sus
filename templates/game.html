@@ -74,6 +74,14 @@
                         }, 50);
                         break;
                         
+                    case 'vote-tie':
+                        // Handle vote tie - reload voting phase to show new round
+                        console.log('Vote tie, reloading page for round', data);
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 1000);
+                        break;
+                        
                     case 'lobby-closed':
                         // Handle lobby closed - clean up and redirect
                         if (sseSource) {
@@ -96,6 +104,7 @@
     <div style="display:none;" sse-swap="phase-change"></div>
     <div style="display:none;" sse-swap="game-finished"></div>
     <div style="display:none;" sse-swap="lobby-closed"></div>
+    <div style="display:none;" sse-swap="vote-tie"></div>
     
     <div class="container">
         <!-- Phase 1: Ready Check -->
@@ -238,7 +247,7 @@
             </header>
 
             <main>
-                <div id="vote-count" class="card" style="text-align: center;" sse-swap="vote-count">
+                <div id="vote-count" class="card" style="text-align: center;" sse-swap="vote-count-voting">
                     <p class="ready-count">0/{{.TotalPlayers}} players have voted</p>
                 </div>
 

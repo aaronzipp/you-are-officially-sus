@@ -32,6 +32,17 @@
                         window.location.href = `/game/${roomCode}/${playerID}`;
                     }, 50);
                 }
+                if (evt.detail && evt.detail.type === 'game-restarted') {
+                    // Clean up SSE connection before navigation
+                    if (sseSource) {
+                        sseSource.close();
+                        sseSource = null;
+                        console.log('SSE connection closed before navigating to lobby');
+                    }
+                    setTimeout(() => {
+                        window.location.href = `/lobby/${roomCode}`;
+                    }, 50);
+                }
                 if (evt.detail && evt.detail.type === 'lobby-closed') {
                     // Clean up SSE connection before navigation
                     if (sseSource) {
@@ -48,6 +59,11 @@
     </script>
 </head>
 <body hx-ext="sse" sse-connect="/sse/{{.RoomCode}}/{{.PlayerID}}">
+    <!-- Hidden elements to register SSE events with HTMX -->
+    <div style="display:none;" sse-swap="game-started"></div>
+    <div style="display:none;" sse-swap="game-restarted"></div>
+    <div style="display:none;" sse-swap="lobby-closed"></div>
+    
     <div class="container">
         <header>
             <h1>Game Results</h1>
