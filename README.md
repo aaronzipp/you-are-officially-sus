@@ -54,7 +54,7 @@ Paste the following into a `compose.yml` to run the latest published container w
 ```yaml
 services:
   app:
-    image: ghcr.io/friedjof/you-are-officially-sus:latest
+    image: ghcr.io/aaronzipp/you-are-officially-sus:latest
     restart: unless-stopped
     ports:
       - "8080:8080"
