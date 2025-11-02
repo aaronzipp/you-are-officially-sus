@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voting - You Are Officially Sus</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js" integrity="sha384-/TgkGk7p307TH7EXJDuUlgG3Ce1UVolAOFopFekQkkXihi5u/6OCvVKyz1W+idaz" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/htmx-ext-sse@2.2.4" integrity="sha384-A986SAtodyH8eg8x8irJnYUk7i9inVQqYigD6qZ9evobksGNIXfeFvDwLSHcp31N" crossorigin="anonymous"></script>
+</head>
+<body hx-ext="sse" sse-connect="/sse/{{.RoomCode}}">
+    <div style="display:none;" sse-swap="nav-redirect"></div>
+
+    <div class="container">
+        <header>
+            <h1>Who is the spy?</h1>
+            {{if gt .VoteRound 1}}
+            <p class="subtitle" style="color: var(--warning);">There was a tie! Vote again - Round {{.VoteRound}}</p>
+            {{else}}
+            <p class="subtitle">Cast your vote carefully</p>
+            {{end}}
+        </header>
+
+        <main>
+            <div id="vote-count" class="card" style="text-align: center;" sse-swap="vote-count-voting">
+                <p class="ready-count">0/{{.TotalPlayers}} players have voted</p>
+            </div>
+
+            <div id="voting-content">
+                {{if .HasVoted}}
+                <div class="card">
+                    <p class="vote-status">✓ You voted</p>
+                    <p class="text-muted">Waiting for other players to vote...</p>
+                </div>
+                {{else}}
+                <div class="card">
+                    <p class="text-muted">Select who you think is the spy:</p>
+                </div>
+                <div class="voting-grid">
+                    {{range $index, $player := .Players}}
+                    {{if ne $player.ID $.PlayerID}}
+                    <form hx-post="/game/{{$.RoomCode}}/vote" 
+                          hx-target="#voting-content"
+                          hx-swap="innerHTML"
+                          class="vote-option">
+                        <input type="hidden" name="suspect" value="{{$player.ID}}">
+                        <button type="submit" class="btn btn-vote">
+                            {{$player.Name}}
+                        </button>
+                    </form>
+                    {{end}}
+                    {{end}}
+                </div>
+                {{end}}
+            </div>
+
+            <div class="card">
+                <p class="room-code-small">Room: <strong>{{.RoomCode}}</strong></p>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

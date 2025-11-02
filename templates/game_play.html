@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Play - You Are Officially Sus</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js" integrity="sha384-/TgkGk7p307TH7EXJDuUlgG3Ce1UVolAOFopFekQkkXihi5u/6OCvVKyz1W+idaz" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/htmx-ext-sse@2.2.4" integrity="sha384-A986SAtodyH8eg8x8irJnYUk7i9inVQqYigD6qZ9evobksGNIXfeFvDwLSHcp31N" crossorigin="anonymous"></script>
+</head>
+<body hx-ext="sse" sse-connect="/sse/{{.RoomCode}}">
+    <div style="display:none;" sse-swap="nav-redirect"></div>
+
+    <div class="container">
+        <header>
+            <div id="timer-display" class="timer-display" sse-swap="timer-update">
+                <span>Time Remaining:</span>
+                <strong>{{.TimeRemaining}}</strong>
+            </div>
+        </header>
+
+        <main>
+            {{if .FirstQuestioner}}
+            <div class="card">
+                <p class="first-questioner">{{range .Players}}{{if eq .ID $.FirstQuestioner}}{{.Name}}{{end}}{{end}} asks the first question!</p>
+            </div>
+            {{end}}
+
+            <div class="card">
+                <div class="challenge-info">
+                    <p class="label">Your Challenge:</p>
+                    <p class="value">{{.Challenge}}</p>
+                </div>
+            </div>
+
+            <div class="card" style="text-align: center;" id="ready-count-playing" sse-swap="ready-count-playing">
+                <p class="ready-count">0/{{.TotalPlayers}} players ready to vote</p>
+            </div>
+
+            <form hx-post="/game/{{.RoomCode}}/ready" 
+                  hx-target="#ready-button-playing"
+                  hx-swap="outerHTML"
+                  hx-disabled-elt="button">
+                {{if .IsReady}}
+                <button id="ready-button-playing" type="submit" class="btn btn-success">✓ Ready to Vote</button>
+                {{else}}
+                <button id="ready-button-playing" type="submit" class="btn btn-secondary">Ready to Vote?</button>
+                {{end}}
+            </form>
+
+            <div class="card">
+                <p class="room-code-small">Room: <strong>{{.RoomCode}}</strong></p>
+            </div>
+        </main>
+
+        <footer>
+            <p>Ask questions and try to complete your challenge!</p>
+        </footer>
+    </div>
+</body>
+</html>

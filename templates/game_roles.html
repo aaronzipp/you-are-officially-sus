@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your Role - You Are Officially Sus</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js" integrity="sha384-/TgkGk7p307TH7EXJDuUlgG3Ce1UVolAOFopFekQkkXihi5u/6OCvVKyz1W+idaz" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/htmx-ext-sse@2.2.4" integrity="sha384-A986SAtodyH8eg8x8irJnYUk7i9inVQqYigD6qZ9evobksGNIXfeFvDwLSHcp31N" crossorigin="anonymous"></script>
+</head>
+<body hx-ext="sse" sse-connect="/sse/{{.RoomCode}}">
+    <div style="display:none;" sse-swap="nav-redirect"></div>
+
+    <div class="container">
+        <main>
+            <div class="role-card {{if .IsSpy}}spy{{else}}innocent{{end}}">
+                {{if .IsSpy}}
+                <h1 class="role-title">You are the SPY</h1>
+                <div class="role-info">
+                    <p class="label">Category:</p>
+                    <p class="value">{{index .Location.Categories 0}}</p>
+                </div>
+                {{else}}
+                <h1 class="role-title">You are NOT the spy</h1>
+                <div class="role-info">
+                    <p class="label">Location:</p>
+                    <p class="value">{{.Location.Word}}</p>
+                </div>
+                {{end}}
+
+                <div class="challenge-info">
+                    <p class="label">Your Challenge:</p>
+                    <p class="value">{{.Challenge}}</p>
+                </div>
+
+                <form hx-post="/game/{{.RoomCode}}/ready" 
+                      hx-target="#ready-button-role"
+                      hx-swap="outerHTML"
+                      hx-disabled-elt="button">
+                    {{if .IsReady}}
+                    <button id="ready-button-role" type="submit" class="btn btn-success">✓ Waiting for others...</button>
+                    {{else}}
+                    <button id="ready-button-role" type="submit" class="btn btn-primary">I've Seen My Role ✓</button>
+                    {{end}}
+                </form>
+            </div>
+
+            <div class="card" style="text-align: center;" id="ready-count-reveal" sse-swap="ready-count-reveal">
+                <p class="ready-count">0/{{.TotalPlayers}} players ready</p>
+            </div>
+
+            <div class="info-card">
+                <p>Remember your role and challenge, then confirm to continue!</p>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

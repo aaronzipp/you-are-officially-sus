@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Get Ready - You Are Officially Sus</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js" integrity="sha384-/TgkGk7p307TH7EXJDuUlgG3Ce1UVolAOFopFekQkkXihi5u/6OCvVKyz1W+idaz" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/htmx-ext-sse@2.2.4" integrity="sha384-A986SAtodyH8eg8x8irJnYUk7i9inVQqYigD6qZ9evobksGNIXfeFvDwLSHcp31N" crossorigin="anonymous"></script>
+</head>
+<body hx-ext="sse" sse-connect="/sse/{{.RoomCode}}">
+    <!-- Hidden element to consume HTMX redirect snippets -->
+    <div style="display:none;" sse-swap="nav-redirect"></div>
+
+    <div class="container">
+        <header>
+            <h1>Get Ready!</h1>
+            <p class="subtitle">You are about to see your role</p>
+        </header>
+
+        <main>
+            <div class="card">
+                <p style="font-size: 1.2rem; margin-bottom: 2rem;">
+                    Make sure you're in a private spot where others can't see your screen.
+                </p>
+                <p class="text-muted" style="margin-bottom: 2rem;">
+                    Once you click "I'm Ready", your role and challenge will be revealed.
+                </p>
+            </div>
+
+            <div class="card" style="text-align: center;" id="ready-count-check" sse-swap="ready-count-check">
+                <p class="ready-count">0/{{.TotalPlayers}} players ready</p>
+            </div>
+
+            <form hx-post="/game/{{.RoomCode}}/ready" 
+                  hx-target="#ready-button-check"
+                  hx-swap="outerHTML"
+                  hx-disabled-elt="button">
+                {{if .IsReady}}
+                <button id="ready-button-check" type="submit" class="btn btn-success">✓ Ready - Waiting for others...</button>
+                {{else}}
+                <button id="ready-button-check" type="submit" class="btn btn-primary">I'm Ready to See My Role</button>
+                {{end}}
+            </form>
+
+            <div class="card">
+                <p class="room-code-small">Room: <strong>{{.RoomCode}}</strong></p>
+            </div>
+        </main>
+    </div>
+</body>
+</html>
