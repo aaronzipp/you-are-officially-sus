@@ -1,0 +1,11 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: you-are-officially-sus:local
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
