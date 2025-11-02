@@ -1,12 +1,14 @@
 package main
 
 import (
+	crand "crypto/rand"
 	"encoding/json"
 	"fmt"
 	htmlpkg "html"
 	"html/template"
 	"log"
 	"maps"
+	"math/big"
 	"math/rand"
 	"net/http"
 	"os"
@@ -100,9 +102,15 @@ var (
 )
 
 func init() {
-
 	// Enable DEBUG logs when DEBUG env var is set (non-empty)
 	debug = os.Getenv("DEBUG") != ""
+
+	// Seed math/rand from crypto/rand to avoid deterministic sequences
+	if n, err := crand.Int(crand.Reader, big.NewInt(1<<62)); err == nil {
+		rand.Seed(n.Int64())
+	} else {
+		rand.Seed(time.Now().UnixNano())
+	}
 }
 
 func main() {
@@ -194,7 +202,7 @@ func (l *Lobby) removeSSEClient(client chan SSEMessage) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	delete(l.sseClients, client)
-	close(client)
+	// Do not close the client channel here to avoid send-on-closed panic in broadcasters.
 	log.Printf("removeSSEClient: client removed, now have %d total clients", len(l.sseClients))
 }
 
@@ -396,8 +404,14 @@ func renderVotedConfirmation() string {
 func generateRoomCode() string {
 	const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" // Exclude ambiguous chars
 	code := make([]byte, 6)
-	for i := range code {
-		code[i] = chars[rand.Intn(len(chars))]
+	for i := 0; i < 6; i++ {
+		n, err := crand.Int(crand.Reader, big.NewInt(int64(len(chars))))
+		if err != nil {
+			// fallback to math/rand if crypto fails
+			code[i] = chars[rand.Intn(len(chars))]
+			continue
+		}
+		code[i] = chars[n.Int64()]
 	}
 	return string(code)
 }
