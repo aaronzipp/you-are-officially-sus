@@ -1,14 +1,19 @@
 package main
 
 import (
+	crand "crypto/rand"
 	"encoding/json"
 	"fmt"
+	htmlpkg "html"
 	"html/template"
 	"log"
+	"maps"
+	"math/big"
 	"math/rand"
 	"net/http"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -72,13 +77,13 @@ type Lobby struct {
 
 // Game represents an active game session (ephemeral)
 type Game struct {
-	Lobby            *Lobby
-	Location         *Location
-	SpyID            string
-	FirstQuestioner  string                     // Player ID of who asks the first question
-	PlayerInfo       map[string]*GamePlayerInfo // game-specific player data
-	Status           GameStatus
-	StartTime        time.Time
+	Lobby           *Lobby
+	Location        *Location
+	SpyID           string
+	FirstQuestioner string                     // Player ID of who asks the first question
+	PlayerInfo      map[string]*GamePlayerInfo // game-specific player data
+	Status          GameStatus
+
 	ReadyToReveal    map[string]bool // Phase 1: Ready to see role (all players required)
 	ReadyAfterReveal map[string]bool // Phase 2: Confirmed saw role (all players required)
 	ReadyToVote      map[string]bool // Phase 3: Ready to vote (>50% required)
@@ -97,9 +102,15 @@ var (
 )
 
 func init() {
-	rand.Seed(time.Now().UnixNano())
 	// Enable DEBUG logs when DEBUG env var is set (non-empty)
 	debug = os.Getenv("DEBUG") != ""
+
+	// Seed math/rand from crypto/rand to avoid deterministic sequences
+	if n, err := crand.Int(crand.Reader, big.NewInt(1<<62)); err == nil {
+		rand.Seed(n.Int64())
+	} else {
+		rand.Seed(time.Now().UnixNano())
+	}
 }
 
 func main() {
@@ -191,7 +202,7 @@ func (l *Lobby) removeSSEClient(client chan SSEMessage) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	delete(l.sseClients, client)
-	close(client)
+	// Do not close the client channel here to avoid send-on-closed panic in broadcasters.
 	log.Printf("removeSSEClient: client removed, now have %d total clients", len(l.sseClients))
 }
 
@@ -232,10 +243,7 @@ func (l *Lobby) broadcastSSE(event, data string) {
 func (l *Lobby) broadcastPersonalizedControls() {
 	l.mu.RLock()
 	// Collect all client channels and their player IDs while holding the lock
-	clientMap := make(map[chan SSEMessage]string)
-	for client, playerID := range l.sseClients {
-		clientMap[client] = playerID
-	}
+	clientMap := maps.Clone(l.sseClients)
 	l.mu.RUnlock()
 
 	// Send personalized messages WITHOUT holding the lock
@@ -256,12 +264,18 @@ func (l *Lobby) broadcastPersonalizedControls() {
 // renderPlayerList generates HTML for the player list
 func (l *Lobby) renderPlayerList() string {
 	players := getPlayerList(l.Players)
-	html := fmt.Sprintf(`<h2>Players (%d)</h2><ul class="player-list">`, len(players))
+	var b strings.Builder
+	b.WriteString(`<h2>Players (`)
+	b.WriteString(strconv.Itoa(len(players)))
+	b.WriteString(`)</h2><ul class="player-list">`)
 	for _, p := range players {
-		html += fmt.Sprintf(`<li class="player-item"><span class="player-name">%s</span></li>`, p.Name)
+		name := htmlpkg.EscapeString(p.Name)
+		b.WriteString(`<li class="player-item"><span class="player-name">`)
+		b.WriteString(name)
+		b.WriteString(`</span></li>`)
 	}
-	html += `</ul>`
-	return html
+	b.WriteString(`</ul>`)
+	return b.String()
 }
 
 // renderHostControls generates HTML for host controls
@@ -276,9 +290,19 @@ func (l *Lobby) renderHostControls(playerID string) string {
 
 	if isHost {
 		if playerCount >= 3 {
-			return fmt.Sprintf(`<div class="button-stack"><form hx-post="/start-game/%s"><button type="submit" class="btn btn-primary">Start Game</button></form><form hx-post="/close-lobby/%s"><button type="submit" class="btn btn-secondary">Close Lobby</button></form></div>`, l.Code, l.Code)
+			var b strings.Builder
+			b.WriteString(`<div class="button-stack"><form hx-post="/start-game/`)
+			b.WriteString(l.Code)
+			b.WriteString(`"><button type="submit" class="btn btn-primary">Start Game</button></form><form hx-post="/close-lobby/`)
+			b.WriteString(l.Code)
+			b.WriteString(`"><button type="submit" class="btn btn-secondary">Close Lobby</button></form></div>`)
+			return b.String()
 		} else {
-			return fmt.Sprintf(`<p>Waiting for players to join...</p><p class="text-muted">Need at least 3 players to start</p><div class="button-stack"><form hx-post="/close-lobby/%s"><button type="submit" class="btn btn-secondary">Close Lobby</button></form></div>`, l.Code)
+			var b strings.Builder
+			b.WriteString(`<p>Waiting for players to join...</p><p class="text-muted">Need at least 3 players to start</p><div class="button-stack"><form hx-post="/close-lobby/`)
+			b.WriteString(l.Code)
+			b.WriteString(`"><button type="submit" class="btn btn-secondary">Close Lobby</button></form></div>`)
+			return b.String()
 		}
 	}
 	return `<p>Waiting for host to start the game...</p>`
@@ -306,7 +330,8 @@ func (l *Lobby) renderScoreTable() string {
 		return wi > wj
 	})
 
-	html := `<h2>Scores</h2><table class="score-table" aria-label="Scoreboard sorted by wins"><thead><tr><th>Player</th><th aria-sort="descending" title="Sorted by wins (desc)">Wins ↓</th><th>Losses</th></tr></thead><tbody>`
+	var b strings.Builder
+	b.WriteString(`<h2>Scores</h2><table class="score-table" aria-label="Scoreboard sorted by wins"><thead><tr><th>Player</th><th aria-sort="descending" title="Sorted by wins (desc)">Wins ↓</th><th>Losses</th></tr></thead><tbody>`)
 	for _, p := range players {
 		score := l.Scores[p.ID]
 		wins, losses := 0, 0
@@ -314,39 +339,55 @@ func (l *Lobby) renderScoreTable() string {
 			wins = score.GamesWon
 			losses = score.GamesLost
 		}
-		html += fmt.Sprintf(`<tr><td class="score-player">%s</td><td><span class="badge-pill badge-win">%d</span></td><td><span class="badge-pill badge-loss">%d</span></td></tr>`, p.Name, wins, losses)
+		name := htmlpkg.EscapeString(p.Name)
+		b.WriteString(`<tr><td class="score-player">`)
+		b.WriteString(name)
+		b.WriteString(`</td><td><span class="badge-pill badge-win">`)
+		b.WriteString(strconv.Itoa(wins))
+		b.WriteString(`</span></td><td><span class="badge-pill badge-loss">`)
+		b.WriteString(strconv.Itoa(losses))
+		b.WriteString(`</span></td></tr>`)
 	}
-	html += `</tbody></table>`
-	return html
+	b.WriteString(`</tbody></table>`)
+	return b.String()
 }
 
 // renderReadyCountCheck generates HTML for Phase 1 ready count display
 func (l *Lobby) renderReadyCountCheck(ready, total int) string {
-	text := fmt.Sprintf("%d/%d players ready", ready, total)
-	return fmt.Sprintf(`<p class="ready-count">%s</p>`, text)
+	var b strings.Builder
+	b.WriteString(`<p class="ready-count">`)
+	b.WriteString(strconv.Itoa(ready))
+	b.WriteString(`/`)
+	b.WriteString(strconv.Itoa(total))
+	b.WriteString(` players ready</p>`)
+	return b.String()
 }
 
 // renderReadyCountReveal generates HTML for Phase 2 ready count display
 func (l *Lobby) renderReadyCountReveal(ready, total int) string {
-	text := fmt.Sprintf("%d/%d players ready", ready, total)
-	return fmt.Sprintf(`<p class="ready-count">%s</p>`, text)
+	return l.renderReadyCountCheck(ready, total)
 }
 
 // renderReadyCountPlaying generates HTML for Phase 3 ready count display
 func (l *Lobby) renderReadyCountPlaying(ready, total int) string {
-	text := fmt.Sprintf("%d/%d players ready to vote", ready, total)
-	return fmt.Sprintf(`<p class="ready-count">%s</p>`, text)
-}
-
-// renderTimerUpdate generates HTML for timer display
-func renderTimerUpdate(timeStr string) string {
-	return fmt.Sprintf(`<span>Time Remaining:</span>
-<strong>%s</strong>`, timeStr)
+	var b strings.Builder
+	b.WriteString(`<p class="ready-count">`)
+	b.WriteString(strconv.Itoa(ready))
+	b.WriteString(`/`)
+	b.WriteString(strconv.Itoa(total))
+	b.WriteString(` players ready to vote</p>`)
+	return b.String()
 }
 
 // renderVoteCount generates HTML for vote count display
 func renderVoteCount(count, total int) string {
-	return fmt.Sprintf(`<p class="ready-count">%d/%d players have voted</p>`, count, total)
+	var b strings.Builder
+	b.WriteString(`<p class="ready-count">`)
+	b.WriteString(strconv.Itoa(count))
+	b.WriteString(`/`)
+	b.WriteString(strconv.Itoa(total))
+	b.WriteString(` players have voted</p>`)
+	return b.String()
 }
 
 // renderVotedConfirmation generates HTML for "you voted" confirmation
@@ -363,8 +404,14 @@ func renderVotedConfirmation() string {
 func generateRoomCode() string {
 	const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" // Exclude ambiguous chars
 	code := make([]byte, 6)
-	for i := range code {
-		code[i] = chars[rand.Intn(len(chars))]
+	for i := 0; i < 6; i++ {
+		n, err := crand.Int(crand.Reader, big.NewInt(int64(len(chars))))
+		if err != nil {
+			// fallback to math/rand if crypto fails
+			code[i] = chars[rand.Intn(len(chars))]
+			continue
+		}
+		code[i] = chars[n.Int64()]
 	}
 	return string(code)
 }
@@ -842,27 +889,7 @@ func handleGameMux(w http.ResponseWriter, r *http.Request) {
 	g := lobby.CurrentGame
 	playerInfo := g.PlayerInfo[playerID]
 
-	// time remaining
-	timeRemaining := "10:00"
-	secondsRemaining := 600
-	if g.Status == StatusPlaying {
-		elapsed := time.Since(g.StartTime)
-		remaining := 10*time.Minute - elapsed
-		if remaining > 0 {
-			minutes := int(remaining.Minutes())
-			seconds := int(remaining.Seconds()) % 60
-			timeRemaining = fmt.Sprintf("%d:%02d", minutes, seconds)
-			secondsRemaining = int(remaining.Seconds())
-			if secondsRemaining > 600 {
-				secondsRemaining = 600
-			}
-		} else {
-			timeRemaining = "0:00"
-			secondsRemaining = 0
-		}
-	} else {
-		secondsRemaining = 0
-	}
+	// time remaining: handled entirely client-side now
 
 	isReady := false
 	switch g.Status {
@@ -875,35 +902,31 @@ func handleGameMux(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := struct {
-		RoomCode         string
-		PlayerID         string
-		Status           GameStatus
-		Players          []*Player
-		TotalPlayers     int
-		Location         *Location
-		Challenge        string
-		IsSpy            bool
-		IsReady          bool
-		HasVoted         bool
-		VoteRound        int
-		FirstQuestioner  string
-		TimeRemaining    string
-		SecondsRemaining int
+		RoomCode        string
+		PlayerID        string
+		Status          GameStatus
+		Players         []*Player
+		TotalPlayers    int
+		Location        *Location
+		Challenge       string
+		IsSpy           bool
+		IsReady         bool
+		HasVoted        bool
+		VoteRound       int
+		FirstQuestioner string
 	}{
-		RoomCode:         roomCode,
-		PlayerID:         playerID,
-		Status:           g.Status,
-		Players:          getPlayerList(lobby.Players),
-		TotalPlayers:     len(lobby.Players),
-		Location:         g.Location,
-		Challenge:        playerInfo.Challenge,
-		IsSpy:            playerInfo.IsSpy,
-		IsReady:          isReady,
-		HasVoted:         g.Votes[playerID] != "",
-		VoteRound:        g.VoteRound,
-		FirstQuestioner:  g.FirstQuestioner,
-		TimeRemaining:    timeRemaining,
-		SecondsRemaining: secondsRemaining,
+		RoomCode:        roomCode,
+		PlayerID:        playerID,
+		Status:          g.Status,
+		Players:         getPlayerList(lobby.Players),
+		TotalPlayers:    len(lobby.Players),
+		Location:        g.Location,
+		Challenge:       playerInfo.Challenge,
+		IsSpy:           playerInfo.IsSpy,
+		IsReady:         isReady,
+		HasVoted:        g.Votes[playerID] != "",
+		VoteRound:       g.VoteRound,
+		FirstQuestioner: g.FirstQuestioner,
 	}
 	lobby.mu.RUnlock()
 
@@ -995,7 +1018,7 @@ func gameHandleReadyCookie(w http.ResponseWriter, r *http.Request, roomCode stri
 			if p, ok := lobby.Players[id]; ok {
 				confirmedNames = append(confirmedNames, p.Name)
 			} else {
-				confirmedNames = append(confirmedNames, fmt.Sprintf("unknown(%s)", id))
+				confirmedNames = append(confirmedNames, "unknown("+id+")")
 			}
 		}
 	}
@@ -1032,7 +1055,6 @@ func gameHandleReadyCookie(w http.ResponseWriter, r *http.Request, roomCode stri
 	buttonID := "ready-button-check"
 	buttonText := "I'm Ready to See My Role"
 	buttonClass := "btn btn-primary"
-	buttonDisabled := false
 	switch statusBefore {
 	case StatusReadyCheck:
 		buttonID = "ready-button-check"
@@ -1062,11 +1084,15 @@ func gameHandleReadyCookie(w http.ResponseWriter, r *http.Request, roomCode stri
 			buttonClass = "btn btn-secondary"
 		}
 	}
-	if buttonDisabled {
-		buttonHTML = fmt.Sprintf(`<button id="%s" type="submit" class="%s" disabled>%s</button>`, buttonID, buttonClass, buttonText)
-	} else {
-		buttonHTML = fmt.Sprintf(`<button id="%s" type="submit" class="%s">%s</button>`, buttonID, buttonClass, buttonText)
-	}
+	var bb strings.Builder
+	bb.WriteString(`<button id="`)
+	bb.WriteString(buttonID)
+	bb.WriteString(`" type="submit" class="`)
+	bb.WriteString(buttonClass)
+	bb.WriteString(`">`)
+	bb.WriteString(buttonText)
+	bb.WriteString(`</button>`)
+	buttonHTML = bb.String()
 
 	// Detailed logging for readiness change
 	if debug {
@@ -1095,7 +1121,6 @@ func gameHandleReadyCookie(w http.ResponseWriter, r *http.Request, roomCode stri
 					game.ReadyToVote[id] = false
 				}
 			}
-			game.StartTime = time.Now()
 			// Choose random first questioner
 			playerIDs := make([]string, 0, len(lobby.Players))
 			for id := range lobby.Players {
@@ -1151,8 +1176,6 @@ func gameHandleVoteCookie(w http.ResponseWriter, r *http.Request, roomCode strin
 	var voteCountMsg string
 	var shouldFinish bool
 	var shouldRevote bool
-	var newVoteRound int
-	_ = newVoteRound
 
 	lobby.mu.Lock()
 	game := lobby.CurrentGame
@@ -1186,7 +1209,6 @@ func gameHandleVoteCookie(w http.ResponseWriter, r *http.Request, roomCode strin
 			// tie -> revote
 			game.Votes = make(map[string]string)
 			game.VoteRound++
-			newVoteRound = game.VoteRound
 			shouldRevote = true
 		} else {
 			// finish game
@@ -1565,5 +1587,11 @@ func handleCloseLobby(w http.ResponseWriter, r *http.Request) {
 // redirectSnippet returns an HTMX snippet that triggers a client-side redirect
 // by issuing a GET to /game/:code/redirect which replies with HX-Location.
 func redirectSnippet(roomCode, to string) string {
-	return fmt.Sprintf(`<div hx-get="/game/%s/redirect?to=%s" hx-trigger="load" hx-swap="none"></div>`, roomCode, to)
+	var b strings.Builder
+	b.WriteString(`<div hx-get="/game/`)
+	b.WriteString(roomCode)
+	b.WriteString(`/redirect?to=`)
+	b.WriteString(to)
+	b.WriteString(`" hx-trigger="load" hx-swap="none"></div>`)
+	return b.String()
 }
