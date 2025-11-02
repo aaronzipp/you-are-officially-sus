@@ -1,6 +1,6 @@
 # 🕵️‍♂️ You Are Officially Sus
 
-Real-time party game where players ask questions, hunt the spy, and try to stay off the sus list. This Go-powered web app ships with a Postgres + Redis backend stack and container images ready for production.
+Real-time party game where players ask questions, hunt the spy, and try to stay off the sus list. This Go-powered web app ships with container images and automation ready for production.
 
 ## ✨ Features
 - ⚡ Live lobby updates powered by Server-Sent Events and in-memory state
@@ -23,10 +23,9 @@ Real-time party game where players ask questions, hunt the spy, and try to stay 
 - GitHub account with access to GitHub Container Registry (GHCR) for publishing release images
 
 ## 🧬 Environment Variables
-| Variable      | Description                                             | Default     |
-| ------------- | ------------------------------------------------------- | ----------- |
-| `DB_PASSWORD` | Postgres password used by `docker compose` at startup    | _(required)_|
-| `DEBUG`       | Enable verbose logging when set to any non-empty value  | _(empty)_   |
+| Variable | Description                                            | Default   |
+| -------- | ------------------------------------------------------ | --------- |
+| `DEBUG`  | Enable verbose logging when set to any non-empty value | _(empty)_ |
 
 Create a local copy before running the stack:
 
@@ -44,10 +43,23 @@ The server listens on `http://localhost:8080`.
 
 ### Run with Docker Compose
 ```bash
-cp .env.example .env        # fill in DB_PASSWORD
+cp .env.example .env        # optional: set DEBUG=1 for verbose logs
 docker compose up --build
 ```
-The web UI is available at `http://localhost:3000`, Postgres on `5432`, and Redis on `6379`.
+The web UI is available at `http://localhost:8080`.
+
+### 📦 Quick Compose for Prebuilt Image
+Paste the following into a `compose.yml` to run the latest published container without any extra configuration:
+
+```yaml
+services:
+  app:
+    image: ghcr.io/friedjof/you-are-officially-sus:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+```
+Launch it with `docker compose up -d` and visit `http://localhost:8080`.
 
 ## 🧪 Testing
 ```bash
