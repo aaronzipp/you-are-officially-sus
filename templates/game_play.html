@@ -13,9 +13,9 @@
 
     <div class="container">
         <header>
-            <div id="timer-display" class="timer-display" sse-swap="timer-update">
+            <div id="timer-display" class="timer-display" data-remaining="{{.SecondsRemaining}}">
                 <span>Time Remaining:</span>
-                <strong>{{.TimeRemaining}}</strong>
+                <strong id="time-remaining-text">{{.TimeRemaining}}</strong>
             </div>
         </header>
 
@@ -57,5 +57,51 @@
             <p>Ask questions and try to complete your challenge!</p>
         </footer>
     </div>
+
+    <script>
+    (function() {
+        const timerEl = document.getElementById('timer-display');
+        const textEl = document.getElementById('time-remaining-text');
+        if (!timerEl || !textEl) return;
+        let remaining = parseInt(timerEl.getAttribute('data-remaining') || '0', 10);
+
+        function fmt(sec) {
+            const m = Math.floor(sec / 60);
+            const s = sec % 60;
+            return `${m}:${s.toString().padStart(2, '0')}`;
+        }
+
+        function tick() {
+            if (remaining <= 0) return;
+            remaining -= 1;
+            textEl.textContent = fmt(remaining);
+            if (remaining <= 0) {
+                const btn = document.getElementById('ready-button-playing');
+                // Auto-POST ready if not already ready
+                if (btn && btn.classList.contains('btn-secondary')) {
+                    // Use htmx to submit the existing form
+                    const form = btn.closest('form');
+                    if (form) {
+                        htmx.trigger(form, 'submit');
+                    }
+                }
+                clearInterval(interval);
+            }
+        }
+
+        // Seed the text in case of mismatch
+        textEl.textContent = fmt(remaining);
+        const interval = setInterval(tick, 1000);
+
+        // Clean up on navigation to avoid leaks
+        window.addEventListener('beforeunload', function() { clearInterval(interval); });
+        document.body.addEventListener('htmx:beforeSwap', function(evt) {
+            if (evt.detail.xhr && evt.detail.shouldSwap) {
+                clearInterval(interval);
+            }
+        });
+    })();
+    </script>
 </body>
 </html>
+

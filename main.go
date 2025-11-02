@@ -83,8 +83,7 @@ type Game struct {
 	ReadyAfterReveal map[string]bool // Phase 2: Confirmed saw role (all players required)
 	ReadyToVote      map[string]bool // Phase 3: Ready to vote (>50% required)
 	Votes            map[string]string
-	VoteRound        int       // Track voting rounds for tie-breaking
-	timerDone        chan bool // Signal to stop timer goroutine
+	VoteRound        int // Track voting rounds for tie-breaking
 }
 
 // Global storage
@@ -825,6 +824,7 @@ func handleGameMux(w http.ResponseWriter, r *http.Request) {
 
 	// time remaining
 	timeRemaining := "10:00"
+	secondsRemaining := 600
 	if g.Status == StatusPlaying {
 		elapsed := time.Since(g.StartTime)
 		remaining := 10*time.Minute - elapsed
@@ -832,9 +832,16 @@ func handleGameMux(w http.ResponseWriter, r *http.Request) {
 			minutes := int(remaining.Minutes())
 			seconds := int(remaining.Seconds()) % 60
 			timeRemaining = fmt.Sprintf("%d:%02d", minutes, seconds)
+			secondsRemaining = int(remaining.Seconds())
+			if secondsRemaining > 600 {
+				secondsRemaining = 600
+			}
 		} else {
 			timeRemaining = "0:00"
+			secondsRemaining = 0
 		}
+	} else {
+		secondsRemaining = 0
 	}
 
 	isReady := false
@@ -848,33 +855,35 @@ func handleGameMux(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := struct {
-		RoomCode        string
-		PlayerID        string
-		Status          GameStatus
-		Players         []*Player
-		TotalPlayers    int
-		Location        *Location
-		Challenge       string
-		IsSpy           bool
-		IsReady         bool
-		HasVoted        bool
-		VoteRound       int
-		FirstQuestioner string
-		TimeRemaining   string
+		RoomCode         string
+		PlayerID         string
+		Status           GameStatus
+		Players          []*Player
+		TotalPlayers     int
+		Location         *Location
+		Challenge        string
+		IsSpy            bool
+		IsReady          bool
+		HasVoted         bool
+		VoteRound        int
+		FirstQuestioner  string
+		TimeRemaining    string
+		SecondsRemaining int
 	}{
-		RoomCode:        roomCode,
-		PlayerID:        playerID,
-		Status:          g.Status,
-		Players:         getPlayerList(lobby.Players),
-		TotalPlayers:    len(lobby.Players),
-		Location:        g.Location,
-		Challenge:       playerInfo.Challenge,
-		IsSpy:           playerInfo.IsSpy,
-		IsReady:         isReady,
-		HasVoted:        g.Votes[playerID] != "",
-		VoteRound:       g.VoteRound,
-		FirstQuestioner: g.FirstQuestioner,
-		TimeRemaining:   timeRemaining,
+		RoomCode:         roomCode,
+		PlayerID:         playerID,
+		Status:           g.Status,
+		Players:          getPlayerList(lobby.Players),
+		TotalPlayers:     len(lobby.Players),
+		Location:         g.Location,
+		Challenge:        playerInfo.Challenge,
+		IsSpy:            playerInfo.IsSpy,
+		IsReady:          isReady,
+		HasVoted:         g.Votes[playerID] != "",
+		VoteRound:        g.VoteRound,
+		FirstQuestioner:  g.FirstQuestioner,
+		TimeRemaining:    timeRemaining,
+		SecondsRemaining: secondsRemaining,
 	}
 	lobby.mu.RUnlock()
 
@@ -1075,7 +1084,6 @@ func gameHandleReadyCookie(w http.ResponseWriter, r *http.Request, roomCode stri
 			game.FirstQuestioner = playerIDs[rand.Intn(len(playerIDs))]
 			nextPath = phasePathFor(roomCode, game.Status)
 			shouldBroadcastPhase = true
-			go game.runTimer(lobby)
 		case StatusPlaying:
 			game.Status = StatusVoting
 			nextPath = phasePathFor(roomCode, game.Status)
@@ -1392,7 +1400,6 @@ func handleStartGame(w http.ResponseWriter, r *http.Request) {
 		ReadyToVote:      make(map[string]bool),
 		Votes:            make(map[string]string),
 		VoteRound:        1,
-		timerDone:        make(chan bool),
 	}
 	// Pre-seed current phase readiness map with all players
 	for id := range lobby.Players {
@@ -1472,11 +1479,6 @@ func handleRestartGame(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Stop timer if running
-	if lobby.CurrentGame != nil && lobby.CurrentGame.timerDone != nil {
-		close(lobby.CurrentGame.timerDone)
-	}
-
 	// Clear game
 	lobby.CurrentGame = nil
 
@@ -1539,46 +1541,6 @@ func handleCloseLobby(w http.ResponseWriter, r *http.Request) {
 }
 
 // ===== Game Methods =====
-
-// runTimer runs the game timer and broadcasts updates
-func (g *Game) runTimer(lobby *Lobby) {
-	const gameDuration = 10 * time.Minute
-	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-g.timerDone:
-			return
-		case <-ticker.C:
-			elapsed := time.Since(g.StartTime)
-			remaining := gameDuration - elapsed
-
-			if remaining <= 0 {
-				// Time's up - start voting
-				shouldBroadcast := false
-				room := lobby.Code
-				lobby.mu.Lock()
-				if g.Status == StatusPlaying {
-					g.Status = StatusVoting
-					shouldBroadcast = true
-				}
-				lobby.mu.Unlock()
-				if shouldBroadcast {
-					lobby.broadcastSSE("nav-redirect", redirectSnippet(room, phasePathFor(room, StatusVoting)))
-				}
-				return
-			}
-
-			// Broadcast time update
-			minutes := int(remaining.Minutes())
-			seconds := int(remaining.Seconds()) % 60
-			timeStr := fmt.Sprintf("%d:%02d", minutes, seconds)
-			timerHTML := renderTimerUpdate(timeStr)
-			lobby.broadcastSSE("timer-update", timerHTML)
-		}
-	}
-}
 
 // redirectSnippet returns an HTMX snippet that triggers a client-side redirect
 // by issuing a GET to /game/:code/redirect which replies with HX-Location.
