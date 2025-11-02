@@ -8,7 +8,6 @@ import (
 
 	"github.com/aaronzipp/you-are-officially-sus/internal/game"
 	"github.com/aaronzipp/you-are-officially-sus/internal/models"
-	"github.com/aaronzipp/you-are-officially-sus/internal/render"
 	"github.com/aaronzipp/you-are-officially-sus/internal/sse"
 )
 
@@ -40,7 +39,7 @@ func (ctx *Context) HandleSSE(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/event-stream")
 			w.Header().Set("Cache-Control", "no-cache")
 			w.Header().Set("Connection", "keep-alive")
-			fmt.Fprintf(w, "event: nav-redirect\ndata: %s\n\n", render.RedirectSnippet(roomCode, "/"))
+			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", sse.EventNavRedirect, ctx.RedirectSnippet(roomCode, "/"))
 			if flusher, ok := w.(http.Flusher); ok {
 				flusher.Flush()
 			}
@@ -65,7 +64,7 @@ func (ctx *Context) HandleSSE(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Connection", "keep-alive")
 
 		// Send nav-redirect snippet for HTMX to navigate home
-		fmt.Fprintf(w, "event: nav-redirect\ndata: %s\n\n", render.RedirectSnippet(roomCode, "/"))
+		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", sse.EventNavRedirect, ctx.RedirectSnippet(roomCode, "/"))
 		if flusher, ok := w.(http.Flusher); ok {
 			flusher.Flush()
 		}
@@ -118,7 +117,7 @@ func (ctx *Context) HandleSSE(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			totalPlayers := len(lobby.Players)
-			countHTML = render.ReadyCount(readyCount, totalPlayers, "players ready")
+			countHTML = ctx.ReadyCount(readyCount, totalPlayers, "players ready")
 			eventName = "ready-count-check"
 		case models.StatusRoleReveal:
 			for id := range lobby.Players {
@@ -127,7 +126,7 @@ func (ctx *Context) HandleSSE(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			totalPlayers := len(lobby.Players)
-			countHTML = render.ReadyCount(readyCount, totalPlayers, "players ready")
+			countHTML = ctx.ReadyCount(readyCount, totalPlayers, "players ready")
 			eventName = "ready-count-reveal"
 		case models.StatusPlaying:
 			for id := range lobby.Players {
@@ -136,13 +135,13 @@ func (ctx *Context) HandleSSE(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			totalPlayers := len(lobby.Players)
-			countHTML = render.ReadyCount(readyCount, totalPlayers, "players ready to vote")
+			countHTML = ctx.ReadyCount(readyCount, totalPlayers, "players ready to vote")
 			eventName = "ready-count-playing"
 		case models.StatusVoting:
 			// Send vote count for voting phase
 			voteCount := len(g.Votes)
 			totalPlayers := len(lobby.Players)
-			countHTML = render.VoteCount(voteCount, totalPlayers)
+			countHTML = ctx.VoteCount(voteCount, totalPlayers)
 			eventName = "vote-count-voting"
 		}
 		lobby.RUnlock()
@@ -152,17 +151,17 @@ func (ctx *Context) HandleSSE(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", eventName, countHTML)
 	} else {
 		// No game - send lobby data
-		playerListHTML := render.PlayerList(lobby.Players)
-		hostControlsHTML := render.HostControls(lobby, playerID)
-		scoreTableHTML := render.ScoreTable(lobby)
+		playerListHTML := ctx.PlayerList(lobby.Players)
+		hostControlsHTML := ctx.HostControls(lobby, playerID)
+		scoreTableHTML := ctx.ScoreTable(lobby)
 		lobby.RUnlock()
 		if debug {
 			log.Printf("handleSSE: sending initial lobby data to player %s", playerID)
 		}
-		fmt.Fprintf(w, "event: player-update\ndata: %s\n\n", playerListHTML)
-		fmt.Fprintf(w, "event: controls-update\ndata: %s\n\n", hostControlsHTML)
+		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", sse.EventPlayerUpdate, playerListHTML)
+		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", sse.EventControlsUpdate, hostControlsHTML)
 		if scoreTableHTML != "" {
-			fmt.Fprintf(w, "event: score-update\ndata: %s\n\n", scoreTableHTML)
+			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", sse.EventScoreUpdate, scoreTableHTML)
 		}
 	}
 	w.(http.Flusher).Flush()

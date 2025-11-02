@@ -1,0 +1,24 @@
+{{if .InGame}}
+{{/* No controls during game */}}
+{{else if .IsHost}}
+    {{if ge .PlayerCount 3}}
+    <div class="button-stack">
+        <form hx-post="/start-game/{{.RoomCode}}">
+            <button type="submit" class="btn btn-primary">Start Game</button>
+        </form>
+        <form hx-post="/close-lobby/{{.RoomCode}}">
+            <button type="submit" class="btn btn-secondary">Close Lobby</button>
+        </form>
+    </div>
+    {{else}}
+    <p>Waiting for players to join...</p>
+    <p class="text-muted">Need at least 3 players to start</p>
+    <div class="button-stack">
+        <form hx-post="/close-lobby/{{.RoomCode}}">
+            <button type="submit" class="btn btn-secondary">Close Lobby</button>
+        </form>
+    </div>
+    {{end}}
+{{else}}
+<p>Waiting for host to start the game...</p>
+{{end}}

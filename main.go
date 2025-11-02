@@ -1,16 +1,12 @@
 package main
 
 import (
-	crand "crypto/rand"
 	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
-	"math/big"
-	"math/rand"
 	"net/http"
 	"os"
-	"time"
 
 	"github.com/aaronzipp/you-are-officially-sus/internal/handlers"
 	"github.com/aaronzipp/you-are-officially-sus/internal/models"
@@ -24,13 +20,7 @@ var (
 func init() {
 	// Enable DEBUG logs when DEBUG env var is set (non-empty)
 	debug = os.Getenv("DEBUG") != ""
-
-	// Seed math/rand from crypto/rand to avoid deterministic sequences
-	if n, err := crand.Int(crand.Reader, big.NewInt(1<<62)); err == nil {
-		rand.Seed(n.Int64())
-	} else {
-		rand.Seed(time.Now().UnixNano())
-	}
+	// Note: In Go 1.20+, math/rand is automatically seeded
 }
 
 func main() {
@@ -41,11 +31,18 @@ func main() {
 	}
 
 	// Parse templates with custom functions
-	templates, err := template.New("").Funcs(template.FuncMap{
+	tmpl := template.New("").Funcs(template.FuncMap{
 		"add": func(a, b int) int { return a + b },
-	}).ParseGlob("templates/*.html")
+	})
+
+	// Parse main templates and partials
+	templates, err := tmpl.ParseGlob("templates/*.html")
 	if err != nil {
 		log.Fatal("Failed to parse templates:", err)
+	}
+	templates, err = templates.ParseGlob("templates/partials/*.html")
+	if err != nil {
+		log.Fatal("Failed to parse template partials:", err)
 	}
 
 	// Initialize handler context

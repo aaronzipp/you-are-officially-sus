@@ -8,7 +8,6 @@ import (
 
 	"github.com/aaronzipp/you-are-officially-sus/internal/game"
 	"github.com/aaronzipp/you-are-officially-sus/internal/models"
-	"github.com/aaronzipp/you-are-officially-sus/internal/render"
 	"github.com/aaronzipp/you-are-officially-sus/internal/sse"
 )
 
@@ -112,7 +111,7 @@ func (ctx *Context) HandleStartGame(w http.ResponseWriter, r *http.Request) {
 	log.Printf("HandleStartGame: game created, broadcasting redirect to confirm-reveal")
 
 	// Broadcast HTMX redirect snippet to all clients to go to confirm-reveal
-	sse.Broadcast(lobby, "nav-redirect", render.RedirectSnippet(roomCode, game.PhasePathFor(roomCode, models.StatusReadyCheck)))
+	sse.Broadcast(lobby, sse.EventNavRedirect, ctx.RedirectSnippet(roomCode, game.PhasePathFor(roomCode, models.StatusReadyCheck)))
 
 	log.Printf("HandleStartGame: complete")
 	w.Header().Set("HX-Redirect", game.PhasePathFor(roomCode, models.StatusReadyCheck))
@@ -163,7 +162,7 @@ func (ctx *Context) HandleRestartGame(w http.ResponseWriter, r *http.Request) {
 	log.Printf("HandleRestartGame: game cleared, broadcasting nav-redirect to lobby")
 
 	// Broadcast restart WITHOUT holding lock
-	sse.Broadcast(lobby, "nav-redirect", render.RedirectSnippet(roomCode, "/lobby/"+roomCode))
+	sse.Broadcast(lobby, sse.EventNavRedirect, ctx.RedirectSnippet(roomCode, "/lobby/"+roomCode))
 
 	log.Printf("HandleRestartGame: sending redirect response")
 	w.Header().Set("HX-Redirect", "/lobby/"+roomCode)
@@ -202,7 +201,7 @@ func (ctx *Context) HandleCloseLobby(w http.ResponseWriter, r *http.Request) {
 	lobby.Unlock()
 
 	// Broadcast closure
-	sse.Broadcast(lobby, "nav-redirect", render.RedirectSnippet(roomCode, "/"))
+	sse.Broadcast(lobby, sse.EventNavRedirect, ctx.RedirectSnippet(roomCode, "/"))
 
 	// Delete lobby
 	ctx.LobbyStore.Delete(roomCode)

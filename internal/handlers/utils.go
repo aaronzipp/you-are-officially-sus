@@ -3,8 +3,6 @@ package handlers
 import (
 	"fmt"
 	"net/http"
-	"sort"
-	"strings"
 
 	"github.com/aaronzipp/you-are-officially-sus/internal/models"
 )
@@ -27,14 +25,4 @@ func (ctx *Context) getLobbyAndPlayer(r *http.Request, roomCode string) (*models
 		return nil, "", fmt.Errorf("not a member")
 	}
 	return lobby, playerID, nil
-}
-
-// getPlayerList converts map to sorted slice for templates
-func getPlayerList(players map[string]*models.Player) []*models.Player {
-	list := make([]*models.Player, 0, len(players))
-	for _, p := range players {
-		list = append(list, p)
-	}
-	sort.Slice(list, func(i, j int) bool { return strings.ToLower(list[i].Name) < strings.ToLower(list[j].Name) })
-	return list
 }

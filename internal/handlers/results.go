@@ -6,6 +6,7 @@ import (
 
 	"github.com/aaronzipp/you-are-officially-sus/internal/game"
 	"github.com/aaronzipp/you-are-officially-sus/internal/models"
+	"github.com/aaronzipp/you-are-officially-sus/internal/render"
 )
 
 // HandleResults displays the game results
@@ -113,7 +114,7 @@ func (ctx *Context) HandleResults(w http.ResponseWriter, r *http.Request) {
 		RoomCode:       roomCode,
 		PlayerID:       playerID,
 		IsHost:         lobby.Host == playerID,
-		Players:        getPlayerList(lobby.Players),
+		Players:        render.GetPlayerList(lobby.Players),
 		Spy:            spy,
 		Location:       currentGame.Location,
 		Challenges:     challengesMap,

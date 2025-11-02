@@ -126,7 +126,7 @@ func (ctx *Context) HandleGameMux(w http.ResponseWriter, r *http.Request) {
 		RoomCode:        roomCode,
 		PlayerID:        playerID,
 		Status:          g.Status,
-		Players:         getPlayerList(lobby.Players),
+		Players:         render.GetPlayerList(lobby.Players),
 		TotalPlayers:    len(lobby.Players),
 		Location:        g.Location,
 		Challenge:       playerInfo.Challenge,
@@ -248,13 +248,13 @@ func (ctx *Context) gameHandleReadyCookie(w http.ResponseWriter, r *http.Request
 	// Prepare outgoing UI for the CURRENT (pre-advance) phase
 	switch statusBefore {
 	case models.StatusReadyCheck:
-		readyCountMsg = render.ReadyCount(readyCount, len(lobby.Players), "players ready")
+		readyCountMsg = ctx.ReadyCount(readyCount, len(lobby.Players), "players ready")
 		readyCountEventName = "ready-count-check"
 	case models.StatusRoleReveal:
-		readyCountMsg = render.ReadyCount(readyCount, len(lobby.Players), "players ready")
+		readyCountMsg = ctx.ReadyCount(readyCount, len(lobby.Players), "players ready")
 		readyCountEventName = "ready-count-reveal"
 	case models.StatusPlaying:
-		readyCountMsg = render.ReadyCount(readyCount, len(lobby.Players), "players ready to vote")
+		readyCountMsg = ctx.ReadyCount(readyCount, len(lobby.Players), "players ready to vote")
 		readyCountEventName = "ready-count-playing"
 	}
 
@@ -348,7 +348,7 @@ func (ctx *Context) gameHandleReadyCookie(w http.ResponseWriter, r *http.Request
 
 	// If phase advanced, instruct clients to navigate; no client-side math
 	if shouldBroadcastPhase {
-		sse.Broadcast(lobby, "nav-redirect", render.RedirectSnippet(roomCode, nextPath))
+		sse.Broadcast(lobby, sse.EventNavRedirect, ctx.RedirectSnippet(roomCode, nextPath))
 		// Also ensure the initiating client navigates via HX-Redirect
 		w.Header().Set("HX-Redirect", nextPath)
 		w.WriteHeader(http.StatusOK)
@@ -437,16 +437,16 @@ func (ctx *Context) gameHandleVoteCookie(w http.ResponseWriter, r *http.Request,
 		}
 	}
 
-	voteCountMsg = render.VoteCount(len(g.Votes), len(lobby.Players))
+	voteCountMsg = ctx.VoteCount(len(g.Votes), len(lobby.Players))
 	lobby.Unlock()
 
-	sse.Broadcast(lobby, "vote-count-voting", voteCountMsg)
+	sse.Broadcast(lobby, sse.EventVoteCount, voteCountMsg)
 	if shouldRevote {
-		sse.Broadcast(lobby, "nav-redirect", render.RedirectSnippet(roomCode, game.PhasePathFor(roomCode, models.StatusVoting)))
+		sse.Broadcast(lobby, sse.EventNavRedirect, ctx.RedirectSnippet(roomCode, game.PhasePathFor(roomCode, models.StatusVoting)))
 	} else if shouldFinish {
-		sse.Broadcast(lobby, "nav-redirect", render.RedirectSnippet(roomCode, game.PhasePathFor(roomCode, models.StatusFinished)))
+		sse.Broadcast(lobby, sse.EventNavRedirect, ctx.RedirectSnippet(roomCode, game.PhasePathFor(roomCode, models.StatusFinished)))
 	}
 
 	w.Header().Set("Content-Type", "text/html")
-	w.Write([]byte(render.VotedConfirmation()))
+	w.Write([]byte(ctx.VotedConfirmation()))
 }

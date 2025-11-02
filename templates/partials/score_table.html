@@ -1,0 +1,26 @@
+{{if gt (len .Scores) 0}}
+<h2>Scores</h2>
+<table class="score-table" aria-label="Scoreboard sorted by wins">
+    <thead>
+        <tr>
+            <th>Player</th>
+            <th aria-sort="descending" title="Sorted by wins (desc)">Wins ↓</th>
+            <th>Losses</th>
+        </tr>
+    </thead>
+    <tbody>
+        {{range .Players}}
+        {{$score := index $.Scores .ID}}
+        <tr>
+            <td class="score-player">{{.Name}}</td>
+            <td>
+                <span class="badge-pill badge-win">{{if $score}}{{$score.GamesWon}}{{else}}0{{end}}</span>
+            </td>
+            <td>
+                <span class="badge-pill badge-loss">{{if $score}}{{$score.GamesLost}}{{else}}0{{end}}</span>
+            </td>
+        </tr>
+        {{end}}
+    </tbody>
+</table>
+{{end}}

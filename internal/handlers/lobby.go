@@ -94,11 +94,11 @@ func (ctx *Context) HandleJoinLobby(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Player joined lobby: code=%s playerID=%s name=%s", roomCode, playerID, playerName)
 
 	// Broadcast update to all clients
-	sse.Broadcast(lobby, "player-update", render.PlayerList(lobby.Players))
-	sse.Broadcast(lobby, "score-update", render.ScoreTable(lobby))
+	sse.Broadcast(lobby, sse.EventPlayerUpdate, ctx.PlayerList(lobby.Players))
+	sse.Broadcast(lobby, sse.EventScoreUpdate, ctx.ScoreTable(lobby))
 	sse.BroadcastPersonalized(lobby, func(pid string) string {
-		return render.HostControls(lobby, pid)
-	}, "controls-update")
+		return ctx.HostControls(lobby, pid)
+	}, sse.EventControlsUpdate)
 
 	// Set cookie for player ID (session)
 	http.SetCookie(w, &http.Cookie{
@@ -145,7 +145,7 @@ func (ctx *Context) HandleLobby(w http.ResponseWriter, r *http.Request) {
 	}{
 		RoomCode: lobby.Code,
 		PlayerID: playerID,
-		Players:  getPlayerList(lobby.Players),
+		Players:  render.GetPlayerList(lobby.Players),
 		IsHost:   lobby.Host == playerID,
 		Scores:   lobby.Scores,
 	}

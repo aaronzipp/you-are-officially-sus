@@ -1,0 +1,8 @@
+<h2>Players ({{len .Players}})</h2>
+<ul class="player-list">
+    {{range .Players}}
+    <li class="player-item">
+        <span class="player-name">{{.Name}}</span>
+    </li>
+    {{end}}
+</ul>
