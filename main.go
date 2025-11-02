@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	htmlpkg "html"
 	"html/template"
 	"log"
 	"maps"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -254,12 +256,18 @@ func (l *Lobby) broadcastPersonalizedControls() {
 // renderPlayerList generates HTML for the player list
 func (l *Lobby) renderPlayerList() string {
 	players := getPlayerList(l.Players)
-	html := fmt.Sprintf(`<h2>Players (%d)</h2><ul class="player-list">`, len(players))
+	var b strings.Builder
+	b.WriteString(`<h2>Players (`)
+	b.WriteString(strconv.Itoa(len(players)))
+	b.WriteString(`)</h2><ul class="player-list">`)
 	for _, p := range players {
-		html += fmt.Sprintf(`<li class="player-item"><span class="player-name">%s</span></li>`, p.Name)
+		name := htmlpkg.EscapeString(p.Name)
+		b.WriteString(`<li class="player-item"><span class="player-name">`)
+		b.WriteString(name)
+		b.WriteString(`</span></li>`)
 	}
-	html += `</ul>`
-	return html
+	b.WriteString(`</ul>`)
+	return b.String()
 }
 
 // renderHostControls generates HTML for host controls
@@ -274,9 +282,19 @@ func (l *Lobby) renderHostControls(playerID string) string {
 
 	if isHost {
 		if playerCount >= 3 {
-			return fmt.Sprintf(`<div class="button-stack"><form hx-post="/start-game/%s"><button type="submit" class="btn btn-primary">Start Game</button></form><form hx-post="/close-lobby/%s"><button type="submit" class="btn btn-secondary">Close Lobby</button></form></div>`, l.Code, l.Code)
+			var b strings.Builder
+			b.WriteString(`<div class="button-stack"><form hx-post="/start-game/`)
+			b.WriteString(l.Code)
+			b.WriteString(`"><button type="submit" class="btn btn-primary">Start Game</button></form><form hx-post="/close-lobby/`)
+			b.WriteString(l.Code)
+			b.WriteString(`"><button type="submit" class="btn btn-secondary">Close Lobby</button></form></div>`)
+			return b.String()
 		} else {
-			return fmt.Sprintf(`<p>Waiting for players to join...</p><p class="text-muted">Need at least 3 players to start</p><div class="button-stack"><form hx-post="/close-lobby/%s"><button type="submit" class="btn btn-secondary">Close Lobby</button></form></div>`, l.Code)
+			var b strings.Builder
+			b.WriteString(`<p>Waiting for players to join...</p><p class="text-muted">Need at least 3 players to start</p><div class="button-stack"><form hx-post="/close-lobby/`)
+			b.WriteString(l.Code)
+			b.WriteString(`"><button type="submit" class="btn btn-secondary">Close Lobby</button></form></div>`)
+			return b.String()
 		}
 	}
 	return `<p>Waiting for host to start the game...</p>`
@@ -304,7 +322,8 @@ func (l *Lobby) renderScoreTable() string {
 		return wi > wj
 	})
 
-	html := `<h2>Scores</h2><table class="score-table" aria-label="Scoreboard sorted by wins"><thead><tr><th>Player</th><th aria-sort="descending" title="Sorted by wins (desc)">Wins ↓</th><th>Losses</th></tr></thead><tbody>`
+	var b strings.Builder
+	b.WriteString(`<h2>Scores</h2><table class="score-table" aria-label="Scoreboard sorted by wins"><thead><tr><th>Player</th><th aria-sort="descending" title="Sorted by wins (desc)">Wins ↓</th><th>Losses</th></tr></thead><tbody>`)
 	for _, p := range players {
 		score := l.Scores[p.ID]
 		wins, losses := 0, 0
@@ -312,16 +331,28 @@ func (l *Lobby) renderScoreTable() string {
 			wins = score.GamesWon
 			losses = score.GamesLost
 		}
-		html += fmt.Sprintf(`<tr><td class="score-player">%s</td><td><span class="badge-pill badge-win">%d</span></td><td><span class="badge-pill badge-loss">%d</span></td></tr>`, p.Name, wins, losses)
+		name := htmlpkg.EscapeString(p.Name)
+		b.WriteString(`<tr><td class="score-player">`)
+		b.WriteString(name)
+		b.WriteString(`</td><td><span class="badge-pill badge-win">`)
+		b.WriteString(strconv.Itoa(wins))
+		b.WriteString(`</span></td><td><span class="badge-pill badge-loss">`)
+		b.WriteString(strconv.Itoa(losses))
+		b.WriteString(`</span></td></tr>`)
 	}
-	html += `</tbody></table>`
-	return html
+	b.WriteString(`</tbody></table>`)
+	return b.String()
 }
 
 // renderReadyCountCheck generates HTML for Phase 1 ready count display
 func (l *Lobby) renderReadyCountCheck(ready, total int) string {
-	text := fmt.Sprintf("%d/%d players ready", ready, total)
-	return fmt.Sprintf(`<p class="ready-count">%s</p>`, text)
+	var b strings.Builder
+	b.WriteString(`<p class="ready-count">`)
+	b.WriteString(strconv.Itoa(ready))
+	b.WriteString(`/`)
+	b.WriteString(strconv.Itoa(total))
+	b.WriteString(` players ready</p>`)
+	return b.String()
 }
 
 // renderReadyCountReveal generates HTML for Phase 2 ready count display
@@ -331,13 +362,24 @@ func (l *Lobby) renderReadyCountReveal(ready, total int) string {
 
 // renderReadyCountPlaying generates HTML for Phase 3 ready count display
 func (l *Lobby) renderReadyCountPlaying(ready, total int) string {
-	text := fmt.Sprintf("%d/%d players ready to vote", ready, total)
-	return fmt.Sprintf(`<p class="ready-count">%s</p>`, text)
+	var b strings.Builder
+	b.WriteString(`<p class="ready-count">`)
+	b.WriteString(strconv.Itoa(ready))
+	b.WriteString(`/`)
+	b.WriteString(strconv.Itoa(total))
+	b.WriteString(` players ready to vote</p>`)
+	return b.String()
 }
 
 // renderVoteCount generates HTML for vote count display
 func renderVoteCount(count, total int) string {
-	return fmt.Sprintf(`<p class="ready-count">%d/%d players have voted</p>`, count, total)
+	var b strings.Builder
+	b.WriteString(`<p class="ready-count">`)
+	b.WriteString(strconv.Itoa(count))
+	b.WriteString(`/`)
+	b.WriteString(strconv.Itoa(total))
+	b.WriteString(` players have voted</p>`)
+	return b.String()
 }
 
 // renderVotedConfirmation generates HTML for "you voted" confirmation
@@ -962,7 +1004,7 @@ func gameHandleReadyCookie(w http.ResponseWriter, r *http.Request, roomCode stri
 			if p, ok := lobby.Players[id]; ok {
 				confirmedNames = append(confirmedNames, p.Name)
 			} else {
-				confirmedNames = append(confirmedNames, fmt.Sprintf("unknown(%s)", id))
+				confirmedNames = append(confirmedNames, "unknown("+id+")")
 			}
 		}
 	}
@@ -1028,7 +1070,15 @@ func gameHandleReadyCookie(w http.ResponseWriter, r *http.Request, roomCode stri
 			buttonClass = "btn btn-secondary"
 		}
 	}
-	buttonHTML = fmt.Sprintf(`<button id="%s" type="submit" class="%s">%s</button>`, buttonID, buttonClass, buttonText)
+	var bb strings.Builder
+	bb.WriteString(`<button id="`)
+	bb.WriteString(buttonID)
+	bb.WriteString(`" type="submit" class="`)
+	bb.WriteString(buttonClass)
+	bb.WriteString(`">`)
+	bb.WriteString(buttonText)
+	bb.WriteString(`</button>`)
+	buttonHTML = bb.String()
 
 	// Detailed logging for readiness change
 	if debug {
@@ -1523,5 +1573,11 @@ func handleCloseLobby(w http.ResponseWriter, r *http.Request) {
 // redirectSnippet returns an HTMX snippet that triggers a client-side redirect
 // by issuing a GET to /game/:code/redirect which replies with HX-Location.
 func redirectSnippet(roomCode, to string) string {
-	return fmt.Sprintf(`<div hx-get="/game/%s/redirect?to=%s" hx-trigger="load" hx-swap="none"></div>`, roomCode, to)
+	var b strings.Builder
+	b.WriteString(`<div hx-get="/game/`)
+	b.WriteString(roomCode)
+	b.WriteString(`/redirect?to=`)
+	b.WriteString(to)
+	b.WriteString(`" hx-trigger="load" hx-swap="none"></div>`)
+	return b.String()
 }
