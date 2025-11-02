@@ -194,6 +194,11 @@ input[type="text"]:focus {
     text-align: center;
 }
 
+.btn:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
 .btn-primary {
     background: var(--primary);
     color: white;
@@ -299,6 +304,48 @@ input[type="text"]:focus {
     text-align: center;
 }
 
+/* Scores Table styling */
+.score-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0 0.5rem;
+}
+.score-table thead th {
+    text-align: left;
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 0.875rem;
+    padding: 0 0.5rem 0.5rem 0.5rem;
+}
+.score-table tbody tr {
+    background: var(--bg);
+}
+.score-table tbody tr td {
+    padding: 0.75rem 0.75rem;
+    vertical-align: middle;
+}
+.score-player {
+    font-weight: 600;
+}
+.badge-pill {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.875rem;
+    font-weight: 700;
+    line-height: 1;
+}
+.badge-win {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--success);
+    border: 1px solid rgba(16, 185, 129, 0.35);
+}
+.badge-loss {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--danger);
+    border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
 .spy-reveal {
     font-size: 2.5rem;
     font-weight: 700;
@@ -393,6 +440,35 @@ input[type="text"]:focus {
 
 .actions .btn {
     flex: 1;
+}
+
+/* Vertical button stack for consistent spacing */
+.button-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+/* Fallback for browsers without flex gap support */
+.button-stack > * + * {
+    margin-top: 1rem;
+}
+.button-stack .btn {
+    width: 100%;
+}
+
+/* Compact button variant for small inline actions */
+.btn-compact {
+    width: auto;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+}
+
+/* Sticky container for keeping actions visible */
+.sticky-top {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.25);
 }
 
 /* Footer */

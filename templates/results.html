@@ -25,11 +25,11 @@
             <p class="subtitle" style="color: var(--warning);">There was a tie after {{.VoteRounds}} round(s)</p>
             {{end}}
             {{if .IsHost}}
-            <div style="margin-top: 1rem;">
-                <form hx-post="/restart-game/{{.RoomCode}}" style="display: inline; margin-right: 1rem;">
+            <div class="actions">
+                <form hx-post="/restart-game/{{.RoomCode}}">
                     <button type="submit" class="btn btn-primary">Play Again</button>
                 </form>
-                <form hx-post="/close-lobby/{{.RoomCode}}" style="display: inline;">
+                <form hx-post="/close-lobby/{{.RoomCode}}">
                     <button type="submit" class="btn btn-secondary">Close Lobby</button>
                 </form>
             </div>

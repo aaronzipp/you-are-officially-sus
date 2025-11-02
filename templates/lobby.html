@@ -10,7 +10,51 @@
     <script>
         // Minimal script: HTMX handles nav-redirect via HX-Location snippets
         document.addEventListener('DOMContentLoaded', function() {
-            // No custom listeners needed; SSE swaps handle updates, nav-redirect is HTMX-driven
+            const btn = document.getElementById('copy-code');
+            const feedback = document.getElementById('copy-feedback');
+            const code = '{{.RoomCode}}';
+
+            function showFeedback(msg) {
+                if (!feedback) return;
+                feedback.textContent = msg;
+                feedback.style.display = 'inline';
+                setTimeout(() => {
+                    feedback.style.display = 'none';
+                    feedback.textContent = 'Copied!';
+                }, 1500);
+            }
+
+            async function copyText(text) {
+                if (navigator.clipboard && window.isSecureContext) {
+                    try {
+                        await navigator.clipboard.writeText(text);
+                        return true;
+                    } catch (_) {}
+                }
+                try {
+                    const ta = document.createElement('textarea');
+                    ta.value = text;
+                    ta.setAttribute('readonly', '');
+                    ta.style.position = 'fixed';
+                    ta.style.top = '-1000px';
+                    ta.style.left = '-1000px';
+                    document.body.appendChild(ta);
+                    ta.select();
+                    ta.setSelectionRange(0, ta.value.length);
+                    const ok = document.execCommand('copy');
+                    document.body.removeChild(ta);
+                    return ok;
+                } catch (_) {
+                    return false;
+                }
+            }
+
+            if (btn) {
+                btn.addEventListener('click', async () => {
+                    const ok = await copyText(code);
+                    showFeedback(ok ? 'Copied!' : 'Copy failed');
+                });
+            }
         });
     </script>
 </head>
@@ -20,6 +64,10 @@
             <h1>Room Lobby</h1>
             <div class="room-code-display">
                 <strong>{{.RoomCode}}</strong>
+                <div style="margin-top:0.5rem;">
+                     <button id="copy-code" class="btn btn-compact" type="button" aria-label="Copy room code" title="Copy room code">Copy</button>
+                     <span id="copy-feedback" class="text-muted" role="status" aria-live="polite" style="margin-left:0.5rem; display:none;">Copied!</span>
+                </div>
             </div>
         </header>
 
@@ -27,6 +75,33 @@
             <!-- Hidden elements for HTMX SSE consumption -->
             <div style="display:none;" sse-swap="nav-redirect"></div>
             
+            {{if .IsHost}}
+             <div id="host-controls" class="card sticky-top" sse-swap="controls-update" aria-label="Host controls">
+                 {{if ge (len .Players) 3}}
+                  <div class="button-stack">
+                     <form hx-post="/start-game/{{.RoomCode}}">
+                         <button type="submit" class="btn btn-primary" aria-label="Start game">Start Game</button>
+                     </form>
+                     <form hx-post="/close-lobby/{{.RoomCode}}">
+                         <button type="submit" class="btn btn-secondary" aria-label="Close lobby">Close Lobby</button>
+                     </form>
+                 </div>
+                 {{else}}
+                 <p>Waiting for players to join...</p>
+                 <p class="text-muted">Need at least 3 players to start</p>
+                  <div class="button-stack">
+                     <form hx-post="/close-lobby/{{.RoomCode}}">
+                         <button type="submit" class="btn btn-secondary" aria-label="Close lobby">Close Lobby</button>
+                     </form>
+                 </div>
+                 {{end}}
+             </div>
+            {{else}}
+            <div id="host-controls" class="card sticky-top" sse-swap="controls-update">
+                <p>Waiting for host to start the game...</p>
+            </div>
+            {{end}}
+
             <div id="player-list-card" class="card" sse-swap="player-update">
                 <h2>Players ({{len .Players}})</h2>
                 <ul class="player-list">
@@ -41,21 +116,25 @@
             {{if gt (len .Scores) 0}}
             <div id="score-card" class="card" sse-swap="score-update">
                 <h2>Scores</h2>
-                <table class="score-table">
-                    <thead>
-                        <tr>
-                            <th>Player</th>
-                            <th>Wins</th>
-                            <th>Losses</th>
-                        </tr>
-                    </thead>
+                 <table class="score-table" aria-label="Scoreboard sorted by wins">
+                     <thead>
+                         <tr>
+                             <th>Player</th>
+                             <th aria-sort="descending" title="Sorted by wins (desc)">Wins ↓</th>
+                             <th>Losses</th>
+                         </tr>
+                     </thead>
                     <tbody>
                         {{range .Players}}
                         {{$score := index $.Scores .ID}}
                         <tr>
-                            <td>{{.Name}}</td>
-                            <td>{{if $score}}{{$score.GamesWon}}{{else}}0{{end}}</td>
-                            <td>{{if $score}}{{$score.GamesLost}}{{else}}0{{end}}</td>
+                            <td class="score-player">{{.Name}}</td>
+                            <td>
+                                <span class="badge-pill badge-win">{{if $score}}{{$score.GamesWon}}{{else}}0{{end}}</span>
+                            </td>
+                            <td>
+                                <span class="badge-pill badge-loss">{{if $score}}{{$score.GamesLost}}{{else}}0{{end}}</span>
+                            </td>
                         </tr>
                         {{end}}
                     </tbody>
@@ -63,29 +142,6 @@
             </div>
             {{else}}
             <div id="score-card" class="card" sse-swap="score-update" style="display:none;">
-            </div>
-            {{end}}
-
-            {{if .IsHost}}
-            <div id="host-controls" class="card" sse-swap="controls-update">
-                {{if ge (len .Players) 3}}
-                <form hx-post="/start-game/{{.RoomCode}}">
-                    <button type="submit" class="btn btn-primary">Start Game</button>
-                </form>
-                <form hx-post="/close-lobby/{{.RoomCode}}" style="margin-top: 1rem;">
-                    <button type="submit" class="btn btn-secondary">Close Lobby</button>
-                </form>
-                {{else}}
-                <p>Waiting for players to join...</p>
-                <p class="text-muted">Need at least 3 players to start</p>
-                <form hx-post="/close-lobby/{{.RoomCode}}" style="margin-top: 1rem;">
-                    <button type="submit" class="btn btn-secondary">Close Lobby</button>
-                </form>
-                {{end}}
-            </div>
-            {{else}}
-            <div id="host-controls" class="card" sse-swap="controls-update">
-                <p>Waiting for host to start the game...</p>
             </div>
             {{end}}
         </main>

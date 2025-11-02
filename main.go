@@ -136,7 +136,7 @@ func main() {
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
 	port := ":8080"
-	log.Printf("Server starting on http://localhost%s", port)
+	log.Printf("Server starting on %s", port)
 	log.Fatal(http.ListenAndServe(port, nil))
 }
 
@@ -276,9 +276,9 @@ func (l *Lobby) renderHostControls(playerID string) string {
 
 	if isHost {
 		if playerCount >= 3 {
-			return fmt.Sprintf(`<form hx-post="/start-game/%s"><button type="submit" class="btn btn-primary">Start Game</button></form><form hx-post="/close-lobby/%s" style="margin-top: 1rem;"><button type="submit" class="btn btn-secondary">Close Lobby</button></form>`, l.Code, l.Code)
+			return fmt.Sprintf(`<div class="button-stack"><form hx-post="/start-game/%s"><button type="submit" class="btn btn-primary">Start Game</button></form><form hx-post="/close-lobby/%s"><button type="submit" class="btn btn-secondary">Close Lobby</button></form></div>`, l.Code, l.Code)
 		} else {
-			return fmt.Sprintf(`<p>Waiting for players to join...</p><p class="text-muted">Need at least 3 players to start</p><form hx-post="/close-lobby/%s" style="margin-top: 1rem;"><button type="submit" class="btn btn-secondary">Close Lobby</button></form>`, l.Code)
+			return fmt.Sprintf(`<p>Waiting for players to join...</p><p class="text-muted">Need at least 3 players to start</p><div class="button-stack"><form hx-post="/close-lobby/%s"><button type="submit" class="btn btn-secondary">Close Lobby</button></form></div>`, l.Code)
 		}
 	}
 	return `<p>Waiting for host to start the game...</p>`
@@ -290,13 +290,33 @@ func (l *Lobby) renderScoreTable() string {
 		return ""
 	}
 
-	html := `<div class="score-table"><h3>Scores</h3><table><tr><th>Player</th><th>Won</th><th>Lost</th></tr>`
-	for playerID, score := range l.Scores {
-		if player, exists := l.Players[playerID]; exists {
-			html += fmt.Sprintf(`<tr><td>%s</td><td>%d</td><td>%d</td></tr>`, player.Name, score.GamesWon, score.GamesLost)
+	players := getPlayerList(l.Players)
+	// Sort by wins descending, then name asc
+	sort.SliceStable(players, func(i, j int) bool {
+		wi, wj := 0, 0
+		if s, ok := l.Scores[players[i].ID]; ok {
+			wi = s.GamesWon
 		}
+		if s, ok := l.Scores[players[j].ID]; ok {
+			wj = s.GamesWon
+		}
+		if wi == wj {
+			return strings.ToLower(players[i].Name) < strings.ToLower(players[j].Name)
+		}
+		return wi > wj
+	})
+
+	html := `<h2>Scores</h2><table class="score-table" aria-label="Scoreboard sorted by wins"><thead><tr><th>Player</th><th aria-sort="descending" title="Sorted by wins (desc)">Wins ↓</th><th>Losses</th></tr></thead><tbody>`
+	for _, p := range players {
+		score := l.Scores[p.ID]
+		wins, losses := 0, 0
+		if score != nil {
+			wins = score.GamesWon
+			losses = score.GamesLost
+		}
+		html += fmt.Sprintf(`<tr><td class="score-player">%s</td><td><span class="badge-pill badge-win">%d</span></td><td><span class="badge-pill badge-loss">%d</span></td></tr>`, p.Name, wins, losses)
 	}
-	html += `</table></div>`
+	html += `</tbody></table>`
 	return html
 }
 
