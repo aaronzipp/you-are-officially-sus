@@ -80,6 +80,7 @@ Tagging commits with the pattern `v*` (e.g., `v1.0.0`) triggers `.github/workflo
 1. Runs the Go test suite.
 2. Builds and pushes Docker images to GHCR with the tag and `latest`.
 3. Compiles a Linux AMD64 binary, archives it, and attaches it to a generated GitHub Release.
+4. Forces the lightweight Git tag `latest` to the same commit so subscribers always track the newest release.
 
 Make sure the repository (or organization) has [GHCR permissions](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#configuring-access-control-and-visibility) configured so `GITHUB_TOKEN` can push images.
 
