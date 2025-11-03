@@ -56,6 +56,14 @@
         <footer>
             <p>Ask questions and try to complete your challenge!</p>
         </footer>
+
+        {{if .IsHost}}
+        <div class="danger-zone">
+            <form hx-post="/close-lobby/{{.RoomCode}}">
+                <button type="submit" class="btn btn-danger" hx-confirm="Are you sure you want to close this lobby? All players will be disconnected.">Close Lobby</button>
+            </form>
+        </div>
+        {{end}}
     </div>
 
     <script>

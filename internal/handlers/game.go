@@ -124,6 +124,7 @@ func (ctx *Context) HandleGameMux(w http.ResponseWriter, r *http.Request) {
 		VoteRound       int
 		FirstQuestioner string
 		PlayStartedAt   int64 // Unix timestamp for client-side timer sync
+		IsHost          bool
 	}{
 		RoomCode:        roomCode,
 		PlayerID:        playerID,
@@ -138,6 +139,7 @@ func (ctx *Context) HandleGameMux(w http.ResponseWriter, r *http.Request) {
 		VoteRound:       g.VoteRound,
 		FirstQuestioner: g.FirstQuestioner,
 		PlayStartedAt:   g.PlayStartedAt.Unix(),
+		IsHost:          lobby.Host == playerID,
 	}
 	lobby.RUnlock()
 
