@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -88,6 +89,7 @@ func (ctx *Context) HandleJoinLobby(w http.ResponseWriter, r *http.Request) {
 
 	// Check if browser already has a player_id cookie
 	var playerID string
+	var isRejoin bool
 	cookie, err := r.Cookie("player_id")
 	if err == nil && cookie.Value != "" {
 		existingPlayerID := cookie.Value
@@ -102,10 +104,30 @@ func (ctx *Context) HandleJoinLobby(w http.ResponseWriter, r *http.Request) {
 		}
 		// Cookie exists but player not in lobby - rejoin with same ID
 		playerID = existingPlayerID
-		log.Printf("Player rejoining lobby: code=%s playerID=%s name=%s", roomCode, playerID, playerName)
+		isRejoin = true
 	} else {
 		// No cookie - create new player ID
 		playerID = uuid.New().String()
+		isRejoin = false
+	}
+
+	// Check if name is already taken by another player
+	if isNameTaken(lobby.Players, playerName, playerID) {
+		lobby.Unlock()
+		log.Printf("Name already taken: code=%s name=%s playerID=%s", roomCode, playerName, playerID)
+		// Use HTMX response headers to retarget the error message
+		w.Header().Set("Content-Type", "text/html")
+		w.Header().Set("HX-Retarget", "#join-error")
+		w.Header().Set("HX-Reswap", "innerHTML")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "⚠️ The name \"%s\" is already taken. Please choose a different name.", playerName)
+		return
+	}
+
+	// Log the successful join/rejoin
+	if isRejoin {
+		log.Printf("Player rejoined lobby: code=%s playerID=%s name=%s", roomCode, playerID, playerName)
+	} else {
 		log.Printf("Player joined lobby: code=%s playerID=%s name=%s", roomCode, playerID, playerName)
 	}
 

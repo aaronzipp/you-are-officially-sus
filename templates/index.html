@@ -18,6 +18,7 @@
             <div class="card">
                 <h2>Join a Room</h2>
                 <form hx-post="/join" hx-target="body">
+                    <div id="join-error" class="error-message" role="alert"></div>
                     <input type="text" name="code" placeholder="Room code" required maxlength="6" style="text-transform: uppercase;" autofocus>
                     <input type="text" name="name" placeholder="Your name" required>
                     <button type="submit" class="btn btn-secondary">Join Room</button>
@@ -31,6 +32,7 @@
             <div class="card">
                 <h2>Create a Room</h2>
                 <form hx-post="/create" hx-target="body">
+                    <div id="create-error" class="error-message" role="alert"></div>
                     <input type="text" name="name" placeholder="Your name" required>
                     <button type="submit" class="btn btn-primary">Create Room</button>
                 </form>

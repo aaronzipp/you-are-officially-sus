@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/aaronzipp/you-are-officially-sus/internal/models"
 )
@@ -25,4 +26,19 @@ func (ctx *Context) getLobbyAndPlayer(r *http.Request, roomCode string) (*models
 		return nil, "", fmt.Errorf("not a member")
 	}
 	return lobby, playerID, nil
+}
+
+// isNameTaken checks if a name is already taken in the lobby (case-insensitive)
+// excludePlayerID allows a player to keep their own name (for rejoin scenarios)
+func isNameTaken(players map[string]*models.Player, name string, excludePlayerID string) bool {
+	nameLower := strings.ToLower(strings.TrimSpace(name))
+	for pid, player := range players {
+		if pid == excludePlayerID {
+			continue // Skip checking against own playerID
+		}
+		if strings.ToLower(player.Name) == nameLower {
+			return true
+		}
+	}
+	return false
 }
