@@ -86,12 +86,35 @@ func (ctx *Context) HandleJoinLobby(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	playerID := uuid.New().String()
-	lobby.Players[playerID] = &models.Player{ID: playerID, Name: playerName}
-	lobby.Scores[playerID] = &models.PlayerScore{}
-	lobby.Unlock()
+	// Check if browser already has a player_id cookie
+	var playerID string
+	cookie, err := r.Cookie("player_id")
+	if err == nil && cookie.Value != "" {
+		existingPlayerID := cookie.Value
+		// Check if this player is already in the lobby
+		if _, exists := lobby.Players[existingPlayerID]; exists {
+			lobby.Unlock()
+			log.Printf("Player already in lobby: code=%s playerID=%s", roomCode, existingPlayerID)
+			// Already joined - just redirect to lobby
+			w.Header().Set("HX-Redirect", "/lobby/"+roomCode)
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		// Cookie exists but player not in lobby - rejoin with same ID
+		playerID = existingPlayerID
+		log.Printf("Player rejoining lobby: code=%s playerID=%s name=%s", roomCode, playerID, playerName)
+	} else {
+		// No cookie - create new player ID
+		playerID = uuid.New().String()
+		log.Printf("Player joined lobby: code=%s playerID=%s name=%s", roomCode, playerID, playerName)
+	}
 
-	log.Printf("Player joined lobby: code=%s playerID=%s name=%s", roomCode, playerID, playerName)
+	// Add/re-add player to lobby
+	lobby.Players[playerID] = &models.Player{ID: playerID, Name: playerName}
+	if _, scoreExists := lobby.Scores[playerID]; !scoreExists {
+		lobby.Scores[playerID] = &models.PlayerScore{}
+	}
+	lobby.Unlock()
 
 	// Broadcast update to all clients
 	sse.Broadcast(lobby, sse.EventPlayerUpdate, ctx.PlayerList(lobby.Players))
