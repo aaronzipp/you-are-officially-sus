@@ -30,7 +30,7 @@
                     <button type="submit" class="btn btn-primary">Play Again</button>
                 </form>
                 <form hx-post="/close-lobby/{{.RoomCode}}">
-                    <button type="submit" class="btn btn-secondary">Close Lobby</button>
+                    <button type="submit" class="btn btn-danger">Close Lobby</button>
                 </form>
             </div>
             {{end}}
@@ -43,7 +43,11 @@
                 <p class="text-muted">No majority - the spy survives</p>
                 {{else if .InnocentWon}}
                 <h2 style="color: var(--innocent);">Innocents Win!</h2>
+                {{if .SpyForfeited}}
+                <p class="text-muted">The spy forfeited by leaving the game</p>
+                {{else}}
                 <p class="text-muted">The spy was correctly identified</p>
+                {{end}}
                 {{else}}
                 <h2 style="color: var(--spy);">Spy Wins!</h2>
                 <p class="text-muted">The spy was not identified</p>
@@ -53,6 +57,9 @@
             <div class="card results-card">
                 <h2>The Spy Was...</h2>
                 <p class="spy-reveal">{{.Spy.Name}}!</p>
+                {{if .SpyForfeited}}
+                <p class="text-muted" style="margin-top: 0.5rem;">(left the game)</p>
+                {{end}}
                 
                 <div class="location-reveal">
                     <p class="label">The location was:</p>
@@ -60,6 +67,7 @@
                 </div>
             </div>
 
+            {{if not .SpyForfeited}}
             <div class="card">
                 <h2>Final Vote Results</h2>
                 {{if gt .VoteRounds 1}}
@@ -98,6 +106,7 @@
                     {{end}}
                 </ul>
             </div>
+            {{end}}
 
             <div class="card">
                 <h2>Challenges</h2>
@@ -110,6 +119,18 @@
                 </ul>
             </div>
         </main>
+
+        <footer>
+            <div style="margin-top: 1rem;">
+                <form hx-post="/leave-lobby/{{.RoomCode}}">
+                    {{if .IsHost}}
+                    <button type="submit" class="btn btn-danger btn-compact" hx-confirm="Are you sure you want to leave? You are the host. Please choose a new host or they will be selected automatically if you disconnect." aria-label="Leave lobby">Leave Lobby</button>
+                    {{else}}
+                    <button type="submit" class="btn btn-danger btn-compact" hx-confirm="Are you sure you want to leave this lobby?" aria-label="Leave lobby">Leave Lobby</button>
+                    {{end}}
+                </form>
+            </div>
+        </footer>
     </div>
 </body>
 </html>

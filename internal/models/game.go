@@ -6,6 +6,7 @@ import "time"
 type Game struct {
 	Location        *Location
 	SpyID           string
+	SpyName         string                     // Store spy name in case they leave
 	FirstQuestioner string                     // Player ID of who asks the first question
 	PlayerInfo      map[string]*GamePlayerInfo // game-specific player data
 	Status          GameStatus
@@ -15,5 +16,6 @@ type Game struct {
 	ReadyAfterReveal map[string]bool // Phase 2: Confirmed saw role (all players required)
 	ReadyToVote      map[string]bool // Phase 3: Ready to vote (>50% required)
 	Votes            map[string]string
-	VoteRound        int // Track voting rounds for tie-breaking
+	VoteRound        int  // Track voting rounds for tie-breaking
+	SpyForfeited     bool // True if spy left the game
 }

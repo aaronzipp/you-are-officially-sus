@@ -268,6 +268,15 @@ input[type="text"]:focus {
     opacity: 1;
 }
 
+/* Override button-stack full width for danger zone buttons */
+.danger-zone .button-stack {
+    align-items: center;
+}
+
+.danger-zone .button-stack .btn {
+    width: auto;
+}
+
 /* Player List */
 .player-list {
     list-style: none;
@@ -588,4 +597,33 @@ button {
     .btn:active {
         transform: scale(0.98);
     }
+}
+
+/* Host Selection */
+.player-select-option {
+    display: flex;
+    align-items: center;
+    padding: 1rem;
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.player-select-option:hover {
+    border-color: var(--primary);
+    background-color: rgba(99, 102, 241, 0.1);
+}
+
+.player-select-option input[type="radio"] {
+    margin-right: 1rem;
+    width: 1.25rem;
+    height: 1.25rem;
+    cursor: pointer;
+}
+
+.player-select-option:has(input:checked) {
+    border-color: var(--primary);
+    background-color: rgba(99, 102, 241, 0.2);
+    font-weight: 600;
 }

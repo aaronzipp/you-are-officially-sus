@@ -183,7 +183,9 @@ func (ctx *Context) HandleSSE(w http.ResponseWriter, r *http.Request) {
 	for {
 		select {
 		case <-reqCtx.Done():
-			log.Printf("handleSSE: client %s disconnected", playerID)
+			log.Printf("handleSSE: SSE connection closed for player %s in room %s (normal navigation or disconnect)", playerID, roomCode)
+			// Don't call handlePlayerDisconnect here - SSE connections close during normal page navigation
+			// Players are only removed when they explicitly leave via HandleLeaveLobby or HandleLeaveLobbyWithHost
 			return
 		case msg := <-clientChan:
 			if debug {

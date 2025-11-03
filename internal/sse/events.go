@@ -7,4 +7,6 @@ const (
 	EventScoreUpdate    = "score-update"
 	EventControlsUpdate = "controls-update"
 	EventVoteCount      = "vote-count-voting"
+	EventHostChanged    = "host-changed"
+	EventErrorMessage   = "error-message"
 )

@@ -114,6 +114,20 @@ func (ctx *Context) RedirectSnippet(roomCode, to string) string {
 	})
 }
 
+// GameAbortedMessage generates HTML for game aborted warning
+func (ctx *Context) GameAbortedMessage(reason string) string {
+	return ctx.ExecutePartial("game_aborted_message.html", struct {
+		Reason string
+	}{
+		Reason: reason,
+	})
+}
+
+// HostNotification generates HTML for new host notification
+func (ctx *Context) HostNotification() string {
+	return ctx.ExecutePartial("host_notification.html", nil)
+}
+
 // HandleIndex serves the landing page
 func (ctx *Context) HandleIndex(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {

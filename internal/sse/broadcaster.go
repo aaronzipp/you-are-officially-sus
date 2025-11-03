@@ -92,3 +92,28 @@ func BroadcastPersonalized(lobby *models.Lobby, renderFunc func(playerID string)
 		}
 	}
 }
+
+// BroadcastToPlayer sends a message to a specific player
+func BroadcastToPlayer(lobby *models.Lobby, playerID, event, data string) {
+	lobby.RLock()
+	// Collect all client channels and their player IDs while holding the lock
+	clientMap := maps.Clone(lobby.GetSSEClients())
+	lobby.RUnlock()
+
+	msg := models.SSEMessage{Event: event, Data: data}
+	// Find all connections for this player and send the message
+	for client, pid := range clientMap {
+		if pid == playerID {
+			select {
+			case client <- msg:
+				if debug {
+					log.Printf("BroadcastToPlayer: sent event=%s to player %s", event, playerID)
+				}
+			case <-time.After(time.Duration(game.SSETimeoutSeconds) * time.Second):
+				if debug {
+					log.Printf("BroadcastToPlayer: timeout sending to player %s", playerID)
+				}
+			}
+		}
+	}
+}

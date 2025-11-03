@@ -10,6 +10,8 @@
 </head>
 <body hx-ext="sse" sse-connect="/sse/{{.RoomCode}}">
     <div style="display:none;" sse-swap="nav-redirect"></div>
+    <div id="error-message-display" sse-swap="error-message"></div>
+    <div id="host-notification-display" sse-swap="host-changed"></div>
 
     <div class="container">
         <header>
@@ -59,15 +61,24 @@
             </div>
         </main>
 
-        {{if .IsHost}}
         <footer>
             <div class="danger-zone">
-                <form hx-post="/close-lobby/{{.RoomCode}}">
-                    <button type="submit" class="btn btn-danger" hx-confirm="Are you sure you want to close this lobby? All players will be disconnected.">Close Lobby</button>
+                {{if .IsHost}}
+                <div class="button-stack">
+                    <form hx-post="/leave-lobby/{{.RoomCode}}">
+                        <button type="submit" class="btn btn-danger" hx-confirm="Are you sure you want to leave? You are the host, so someone else will become the host. If there are fewer than 3 players remaining, the game will end.">Leave Game</button>
+                    </form>
+                    <form hx-post="/close-lobby/{{.RoomCode}}">
+                        <button type="submit" class="btn btn-danger" hx-confirm="Are you sure you want to close the lobby? This will end the game for all players.">Close Lobby</button>
+                    </form>
+                </div>
+                {{else}}
+                <form hx-post="/leave-lobby/{{.RoomCode}}">
+                    <button type="submit" class="btn btn-danger" hx-confirm="Are you sure you want to leave? If there are fewer than 3 players remaining, the game will end.">Leave Game</button>
                 </form>
+                {{end}}
             </div>
         </footer>
-        {{end}}
     </div>
 </body>
 </html>

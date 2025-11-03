@@ -67,6 +67,9 @@ func main() {
 	// Lobby/game lifecycle
 	http.HandleFunc("/restart-game/", ctx.HandleRestartGame)
 	http.HandleFunc("/close-lobby/", ctx.HandleCloseLobby)
+	http.HandleFunc("/leave-lobby/", ctx.HandleLeaveLobby)
+	http.HandleFunc("/select-host/", ctx.HandleSelectHost)
+	http.HandleFunc("/leave-lobby-with-host/", ctx.HandleLeaveLobbyWithHost)
 
 	// Static files
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))

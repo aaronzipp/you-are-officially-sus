@@ -75,6 +75,9 @@
             <!-- Hidden elements for HTMX SSE consumption -->
             <div style="display:none;" sse-swap="nav-redirect"></div>
             
+            <!-- Host notification message -->
+            <div id="host-notification-display" sse-swap="host-changed"></div>
+            
             {{if .IsHost}}
              <div id="host-controls" class="card sticky-top" sse-swap="controls-update" aria-label="Host controls">
                  {{if ge (len .Players) 3}}
@@ -83,17 +86,17 @@
                          <button type="submit" class="btn btn-primary" aria-label="Start game">Start Game</button>
                      </form>
                      <form hx-post="/close-lobby/{{.RoomCode}}">
-                         <button type="submit" class="btn btn-secondary" aria-label="Close lobby">Close Lobby</button>
+                         <button type="submit" class="btn btn-danger" aria-label="Close lobby">Close Lobby</button>
                      </form>
-                 </div>
+                  </div>
                  {{else}}
                  <p>Waiting for players to join...</p>
                  <p class="text-muted">Need at least 3 players to start</p>
                   <div class="button-stack">
                      <form hx-post="/close-lobby/{{.RoomCode}}">
-                         <button type="submit" class="btn btn-secondary" aria-label="Close lobby">Close Lobby</button>
+                         <button type="submit" class="btn btn-danger" aria-label="Close lobby">Close Lobby</button>
                      </form>
-                 </div>
+                  </div>
                  {{end}}
              </div>
             {{else}}
@@ -148,6 +151,15 @@
 
         <footer>
             <p>Share the room code with your friends!</p>
+            <div style="margin-top: 1rem;">
+                <form hx-post="/leave-lobby/{{.RoomCode}}">
+                    {{if .IsHost}}
+                    <button type="submit" class="btn btn-danger btn-compact" hx-confirm="Are you sure you want to leave? You are the host. Please choose a new host or they will be selected automatically if you disconnect." aria-label="Leave lobby">Leave Lobby</button>
+                    {{else}}
+                    <button type="submit" class="btn btn-danger btn-compact" hx-confirm="Are you sure you want to leave this lobby?" aria-label="Leave lobby">Leave Lobby</button>
+                    {{end}}
+                </form>
+            </div>
         </footer>
     </div>
 </body>

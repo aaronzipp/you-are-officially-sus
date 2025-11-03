@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Select New Host - You Are Officially Sus</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js" integrity="sha384-/TgkGk7p307TH7EXJDuUlgG3Ce1UVolAOFopFekQkkXihi5u/6OCvVKyz1W+idaz" crossorigin="anonymous"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Select New Host</h1>
+            <p class="subtitle">Choose who will be the new host when you leave</p>
+        </header>
+
+        <main>
+            <div class="card">
+                <p style="margin-bottom: 1.5rem;">
+                    You are about to leave the lobby. Please select who should become the new host:
+                </p>
+
+                <form hx-post="/leave-lobby-with-host/{{.RoomCode}}" style="display: flex; flex-direction: column; gap: 1rem;">
+                    {{range .OtherPlayers}}
+                    <label class="player-select-option">
+                        <input type="radio" name="new_host" value="{{.ID}}" required>
+                        <span class="player-name">{{.Name}}</span>
+                    </label>
+                    {{end}}
+
+                    <div class="button-stack" style="margin-top: 1rem;">
+                        <button type="submit" class="btn btn-primary">Confirm and Leave</button>
+                        <a href="/lobby/{{.RoomCode}}" class="btn btn-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

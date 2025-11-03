@@ -61,20 +61,28 @@ func (ctx *Context) HandleResults(w http.ResponseWriter, r *http.Request) {
 	var mostVoted string
 	maxVotes := 0
 	isTie := false
-	voteCounts := make(map[int]int) // count -> frequency
-	for _, count := range voteCount {
-		voteCounts[count]++
-		if count > maxVotes {
-			maxVotes = count
-		}
-	}
-	if voteCounts[maxVotes] > 1 {
-		isTie = true
+
+	// Handle spy forfeit case
+	if currentGame.SpyForfeited {
+		// Spy forfeited - innocents win by default
+		mostVoted = currentGame.SpyID
+		isTie = false
 	} else {
-		for suspectID, count := range voteCount {
-			if count == maxVotes {
-				mostVoted = suspectID
-				break
+		voteCounts := make(map[int]int) // count -> frequency
+		for _, count := range voteCount {
+			voteCounts[count]++
+			if count > maxVotes {
+				maxVotes = count
+			}
+		}
+		if voteCounts[maxVotes] > 1 {
+			isTie = true
+		} else {
+			for suspectID, count := range voteCount {
+				if count == maxVotes {
+					mostVoted = suspectID
+					break
+				}
 			}
 		}
 	}
@@ -93,7 +101,17 @@ func (ctx *Context) HandleResults(w http.ResponseWriter, r *http.Request) {
 		votedCorrectly[voterID] = suspectID == currentGame.SpyID
 	}
 
-	spy := lobby.Players[currentGame.SpyID]
+	// Get spy info - handle case where spy left
+	var spy *models.Player
+	if currentGame.SpyForfeited {
+		// Create a temporary player object for the spy who left
+		spy = &models.Player{
+			ID:   currentGame.SpyID,
+			Name: currentGame.SpyName,
+		}
+	} else {
+		spy = lobby.Players[currentGame.SpyID]
+	}
 
 	data := struct {
 		RoomCode       string
@@ -110,6 +128,7 @@ func (ctx *Context) HandleResults(w http.ResponseWriter, r *http.Request) {
 		MostVoted      string
 		IsTie          bool
 		InnocentWon    bool
+		SpyForfeited   bool
 	}{
 		RoomCode:       roomCode,
 		PlayerID:       playerID,
@@ -125,6 +144,7 @@ func (ctx *Context) HandleResults(w http.ResponseWriter, r *http.Request) {
 		MostVoted:      mostVoted,
 		IsTie:          isTie,
 		InnocentWon:    innocentWon,
+		SpyForfeited:   currentGame.SpyForfeited,
 	}
 
 	ctx.Templates.ExecuteTemplate(w, "results.html", data)
