@@ -1,5 +1,7 @@
 package models
 
+import "time"
+
 // Game represents an active game session (ephemeral)
 type Game struct {
 	Location        *Location
@@ -7,6 +9,7 @@ type Game struct {
 	FirstQuestioner string                     // Player ID of who asks the first question
 	PlayerInfo      map[string]*GamePlayerInfo // game-specific player data
 	Status          GameStatus
+	PlayStartedAt   time.Time // When the Playing phase started (for timer sync)
 
 	ReadyToReveal    map[string]bool // Phase 1: Ready to see role (all players required)
 	ReadyAfterReveal map[string]bool // Phase 2: Confirmed saw role (all players required)

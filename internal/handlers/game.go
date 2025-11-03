@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/aaronzipp/you-are-officially-sus/internal/game"
 	"github.com/aaronzipp/you-are-officially-sus/internal/models"
@@ -122,6 +123,7 @@ func (ctx *Context) HandleGameMux(w http.ResponseWriter, r *http.Request) {
 		HasVoted        bool
 		VoteRound       int
 		FirstQuestioner string
+		PlayStartedAt   int64 // Unix timestamp for client-side timer sync
 	}{
 		RoomCode:        roomCode,
 		PlayerID:        playerID,
@@ -135,6 +137,7 @@ func (ctx *Context) HandleGameMux(w http.ResponseWriter, r *http.Request) {
 		HasVoted:        g.Votes[playerID] != "",
 		VoteRound:       g.VoteRound,
 		FirstQuestioner: g.FirstQuestioner,
+		PlayStartedAt:   g.PlayStartedAt.Unix(),
 	}
 	lobby.RUnlock()
 
@@ -321,6 +324,8 @@ func (ctx *Context) gameHandleReadyCookie(w http.ResponseWriter, r *http.Request
 			shouldBroadcastPhase = true
 		case models.StatusRoleReveal:
 			g.Status = models.StatusPlaying
+			// Record when playing phase started (for timer sync)
+			g.PlayStartedAt = time.Now()
 			// Pre-seed next phase readiness map
 			for id := range lobby.Players {
 				if _, ok := g.ReadyToVote[id]; !ok {

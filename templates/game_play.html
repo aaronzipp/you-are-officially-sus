@@ -13,7 +13,7 @@
 
     <div class="container">
         <header>
-            <div id="timer-display" class="timer-display" data-remaining="600">
+            <div id="timer-display" class="timer-display" data-started-at="{{.PlayStartedAt}}" data-duration="600">
                 <span>Time Remaining:</span>
                 <strong id="time-remaining-text">10:00</strong>
             </div>
@@ -63,7 +63,10 @@
         const timerEl = document.getElementById('timer-display');
         const textEl = document.getElementById('time-remaining-text');
         if (!timerEl || !textEl) return;
-        let remaining = parseInt(timerEl.getAttribute('data-remaining') || '0', 10);
+        
+        const startedAt = parseInt(timerEl.getAttribute('data-started-at') || '0', 10);
+        const duration = parseInt(timerEl.getAttribute('data-duration') || '600', 10);
+        let animationFrameId = null;
 
         function fmt(sec) {
             const m = Math.floor(sec / 60);
@@ -71,33 +74,65 @@
             return `${m}:${s.toString().padStart(2, '0')}`;
         }
 
+        function getRemaining() {
+            if (!startedAt) return duration; // Fallback if no timestamp
+            const now = Math.floor(Date.now() / 1000);
+            const elapsed = now - startedAt;
+            return Math.max(0, duration - elapsed);
+        }
+
         function tick() {
-            if (remaining <= 0) return;
-            remaining -= 1;
+            const remaining = getRemaining();
             textEl.textContent = fmt(remaining);
+            
             if (remaining <= 0) {
                 const btn = document.getElementById('ready-button-playing');
                 // Auto-POST ready if not already ready
                 if (btn && btn.classList.contains('btn-secondary')) {
-                    // Use htmx to submit the existing form
                     const form = btn.closest('form');
                     if (form) {
                         htmx.trigger(form, 'submit');
                     }
                 }
-                clearInterval(interval);
+                if (animationFrameId) {
+                    cancelAnimationFrame(animationFrameId);
+                    animationFrameId = null;
+                }
+            } else {
+                animationFrameId = requestAnimationFrame(tick);
             }
         }
 
-        // Seed the text in case of mismatch
-        textEl.textContent = fmt(remaining);
-        const interval = setInterval(tick, 1000);
+        // Initial display
+        textEl.textContent = fmt(getRemaining());
+        
+        // Start animation loop
+        animationFrameId = requestAnimationFrame(tick);
 
-        // Clean up on navigation to avoid leaks
-        window.addEventListener('beforeunload', function() { clearInterval(interval); });
+        // Resync when tab becomes visible (handles phone lock/unlock)
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden) {
+                // Recalculate and restart animation when tab becomes visible
+                if (animationFrameId) {
+                    cancelAnimationFrame(animationFrameId);
+                }
+                textEl.textContent = fmt(getRemaining());
+                if (getRemaining() > 0) {
+                    animationFrameId = requestAnimationFrame(tick);
+                }
+            }
+        });
+
+        // Clean up on navigation
+        window.addEventListener('beforeunload', function() {
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+            }
+        });
+        
         document.body.addEventListener('htmx:beforeSwap', function(evt) {
-            if (evt.detail.xhr && evt.detail.shouldSwap) {
-                clearInterval(interval);
+            if (evt.detail.xhr && evt.detail.shouldSwap && animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
             }
         });
     })();
