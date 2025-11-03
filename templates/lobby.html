@@ -69,6 +69,12 @@
                      <span id="copy-feedback" class="text-muted" role="status" aria-live="polite" style="margin-left:0.5rem; display:none;">Copied!</span>
                 </div>
             </div>
+            {{if .QRCodeDataURL}}
+            <div style="margin-top: 1.5rem; text-align: center;">
+                <p class="text-muted" style="margin-bottom: 0.5rem;">Scan to join</p>
+                <img src="{{.QRCodeDataURL}}" alt="QR code to join lobby" style="max-width: 200px; border: 2px solid #ddd; border-radius: 8px; padding: 8px; background: white;">
+            </div>
+            {{end}}
         </header>
 
         <main>

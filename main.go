@@ -11,16 +11,23 @@ import (
 	"github.com/aaronzipp/you-are-officially-sus/internal/handlers"
 	"github.com/aaronzipp/you-are-officially-sus/internal/models"
 	"github.com/aaronzipp/you-are-officially-sus/internal/store"
+	"github.com/joho/godotenv"
 )
 
 var (
-	debug bool
+	debug   bool
+	baseURL string
 )
 
 func init() {
+	// Load .env file if it exists (ignore error if file doesn't exist)
+	_ = godotenv.Load()
+
 	// Enable DEBUG logs when DEBUG env var is set (non-empty)
 	debug = os.Getenv("DEBUG") != ""
-	// Note: In Go 1.20+, math/rand is automatically seeded
+
+	// Read BASE_URL from environment (empty if not set)
+	baseURL = os.Getenv("BASE_URL")
 }
 
 func main() {
@@ -51,12 +58,14 @@ func main() {
 		Templates:  templates,
 		Locations:  locations,
 		Challenges: challenges,
+		BaseURL:    baseURL,
 	}
 
 	// Routes
 	http.HandleFunc("/", ctx.HandleIndex)
 	http.HandleFunc("/create", ctx.HandleCreateLobby)
 	http.HandleFunc("/join", ctx.HandleJoinLobby)
+	http.HandleFunc("/join/", ctx.HandleJoinMux) // Multiplexer for GET (join screen) and POST (join action)
 	http.HandleFunc("/lobby/", ctx.HandleLobby)
 	http.HandleFunc("/sse/", ctx.HandleSSE)
 	http.HandleFunc("/start-game/", ctx.HandleStartGame)

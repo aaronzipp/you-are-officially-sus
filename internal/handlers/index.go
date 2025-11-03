@@ -17,6 +17,7 @@ type Context struct {
 	Templates  *template.Template
 	Locations  []models.Location
 	Challenges []string
+	BaseURL    string
 }
 
 // ExecutePartial executes a template partial and returns the HTML string

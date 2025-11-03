@@ -23,9 +23,10 @@ Real-time party game where players ask questions, hunt the spy, and try to stay 
 - GitHub account with access to GitHub Container Registry (GHCR) for publishing release images
 
 ## 🧬 Environment Variables
-| Variable | Description                                            | Default   |
-| -------- | ------------------------------------------------------ | --------- |
-| `DEBUG`  | Enable verbose logging when set to any non-empty value | _(empty)_ |
+| Variable   | Description                                            | Default                 |
+| ---------- | ------------------------------------------------------ | ----------------------- |
+| `DEBUG`    | Enable verbose logging when set to any non-empty value | _(empty)_               |
+| `BASE_URL` | Base URL for generating QR codes and lobby links       | `http://localhost:8080` |
 
 Create a local copy before running the stack:
 

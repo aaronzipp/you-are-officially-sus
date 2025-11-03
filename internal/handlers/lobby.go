@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"encoding/base64"
 	"fmt"
+	"html/template"
 	"log"
 	"net/http"
 	"strings"
@@ -11,6 +13,7 @@ import (
 	"github.com/aaronzipp/you-are-officially-sus/internal/render"
 	"github.com/aaronzipp/you-are-officially-sus/internal/sse"
 	"github.com/google/uuid"
+	"github.com/skip2/go-qrcode"
 )
 
 // HandleCreateLobby creates a new lobby
@@ -66,7 +69,15 @@ func (ctx *Context) HandleJoinLobby(w http.ResponseWriter, r *http.Request) {
 	}
 
 	r.ParseForm()
-	roomCode := strings.ToUpper(strings.TrimSpace(r.FormValue("code")))
+
+	// Room code can come from URL path (/join/ABCD) or form field (legacy)
+	roomCode := strings.TrimPrefix(r.URL.Path, "/join/")
+	if roomCode == "" || roomCode == "/join" {
+		// Fall back to form field if not in URL
+		roomCode = strings.TrimSpace(r.FormValue("code"))
+	}
+	roomCode = strings.ToUpper(roomCode)
+
 	playerName := strings.TrimSpace(r.FormValue("name"))
 
 	if roomCode == "" || playerName == "" {
@@ -174,7 +185,8 @@ func (ctx *Context) HandleLobby(w http.ResponseWriter, r *http.Request) {
 	// Get player ID from cookie
 	cookie, err := r.Cookie("player_id")
 	if err != nil {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
+		// No cookie - redirect to join screen for this lobby
+		http.Redirect(w, r, "/join/"+roomCode, http.StatusSeeOther)
 		return
 	}
 	playerID := cookie.Value
@@ -182,19 +194,73 @@ func (ctx *Context) HandleLobby(w http.ResponseWriter, r *http.Request) {
 	lobby.RLock()
 	defer lobby.RUnlock()
 
+	// Generate QR code for lobby URL (only if BASE_URL is configured)
+	var qrDataURL template.URL
+	if ctx.BaseURL != "" {
+		lobbyURL := fmt.Sprintf("%s/lobby/%s", ctx.BaseURL, roomCode)
+		png, err := qrcode.Encode(lobbyURL, qrcode.Medium, 256)
+		if err != nil {
+			log.Printf("Failed to generate QR code for lobby %s: %v", roomCode, err)
+		} else {
+			qrDataURL = template.URL(fmt.Sprintf("data:image/png;base64,%s", base64.StdEncoding.EncodeToString(png)))
+		}
+	}
+
 	data := struct {
-		RoomCode string
-		PlayerID string
-		Players  []*models.Player
-		IsHost   bool
-		Scores   map[string]*models.PlayerScore
+		RoomCode      string
+		PlayerID      string
+		Players       []*models.Player
+		IsHost        bool
+		Scores        map[string]*models.PlayerScore
+		QRCodeDataURL template.URL
 	}{
-		RoomCode: lobby.Code,
-		PlayerID: playerID,
-		Players:  render.GetPlayerList(lobby.Players),
-		IsHost:   lobby.Host == playerID,
-		Scores:   lobby.Scores,
+		RoomCode:      lobby.Code,
+		PlayerID:      playerID,
+		Players:       render.GetPlayerList(lobby.Players),
+		IsHost:        lobby.Host == playerID,
+		Scores:        lobby.Scores,
+		QRCodeDataURL: qrDataURL,
 	}
 
 	ctx.Templates.ExecuteTemplate(w, "lobby.html", data)
+}
+
+// HandleJoinLobbyScreen displays the join screen for entering name when scanning QR code
+func (ctx *Context) HandleJoinLobbyScreen(w http.ResponseWriter, r *http.Request) {
+	roomCode := strings.TrimPrefix(r.URL.Path, "/join/")
+
+	// Verify the lobby exists
+	_, exists := ctx.LobbyStore.Get(roomCode)
+	if !exists {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+
+	// Check if user already has a cookie - if so, redirect directly to lobby
+	cookie, err := r.Cookie("player_id")
+	if err == nil && cookie.Value != "" {
+		// Has cookie - redirect to lobby (HandleLobby will handle the rest)
+		http.Redirect(w, r, "/lobby/"+roomCode, http.StatusSeeOther)
+		return
+	}
+
+	// No cookie - show join screen
+	data := struct {
+		RoomCode string
+	}{
+		RoomCode: roomCode,
+	}
+
+	ctx.Templates.ExecuteTemplate(w, "join_lobby.html", data)
+}
+
+// HandleJoinMux multiplexes between GET (join screen) and POST (join action) for /join/{roomCode}
+func (ctx *Context) HandleJoinMux(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		ctx.HandleJoinLobbyScreen(w, r)
+	} else if r.Method == http.MethodPost {
+		ctx.HandleJoinLobby(w, r)
+	} else {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
 }

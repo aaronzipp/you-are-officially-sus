@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Join Lobby - You Are Officially Sus</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js" integrity="sha384-/TgkGk7p307TH7EXJDuUlgG3Ce1UVolAOFopFekQkkXihi5u/6OCvVKyz1W+idaz" crossorigin="anonymous"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Join Lobby</h1>
+            <div class="room-code-display">
+                <strong>{{.RoomCode}}</strong>
+            </div>
+        </header>
+
+        <main>
+            <div class="card">
+                <h2>Enter Your Name</h2>
+                <form hx-post="/join/{{.RoomCode}}" hx-target="body">
+                    <div id="join-error" class="error-message" role="alert"></div>
+                    <input type="text" name="name" placeholder="Your name" required autofocus>
+                    <button type="submit" class="btn btn-primary">Join Lobby</button>
+                </form>
+            </div>
+
+            <div style="margin-top: 1.5rem; text-align: center;">
+                <a href="/" class="btn btn-secondary btn-compact">Back to Home</a>
+            </div>
+        </main>
+
+        <footer>
+            <p>Enter your name to join this lobby</p>
+        </footer>
+    </div>
+</body>
+</html>
