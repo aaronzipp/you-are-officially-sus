@@ -94,6 +94,15 @@ func (ctx *Context) VotedConfirmation() string {
 	return ctx.ExecutePartial("voted_confirmation.html", nil)
 }
 
+// ErrorMessage generates HTML for error messages
+func (ctx *Context) ErrorMessage(message string) string {
+	return ctx.ExecutePartial("error_message.html", struct {
+		Message string
+	}{
+		Message: message,
+	})
+}
+
 // RedirectSnippet returns an HTMX snippet that triggers a client-side redirect
 func (ctx *Context) RedirectSnippet(roomCode, to string) string {
 	return ctx.ExecutePartial("redirect_snippet.html", struct {

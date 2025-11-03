@@ -118,9 +118,10 @@ func (ctx *Context) HandleJoinLobby(w http.ResponseWriter, r *http.Request) {
 		// Use HTMX response headers to retarget the error message
 		w.Header().Set("Content-Type", "text/html")
 		w.Header().Set("HX-Retarget", "#join-error")
-		w.Header().Set("HX-Reswap", "innerHTML")
+		w.Header().Set("HX-Reswap", "outerHTML")
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, "⚠️ The name \"%s\" is already taken. Please choose a different name.", playerName)
+		errorMsg := fmt.Sprintf("The name \"%s\" is already taken. Please choose a different name.", playerName)
+		w.Write([]byte(ctx.ErrorMessage(errorMsg)))
 		return
 	}
 
