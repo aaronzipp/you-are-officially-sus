@@ -11,6 +11,18 @@ import (
 	"github.com/aaronzipp/you-are-officially-sus/internal/sse"
 )
 
+// formatSSEData formats multi-line data for SSE by prefixing each line with "data: "
+func formatSSEData(data string) string {
+	lines := strings.Split(data, "\n")
+	var formatted strings.Builder
+	for _, line := range lines {
+		formatted.WriteString("data: ")
+		formatted.WriteString(line)
+		formatted.WriteString("\n")
+	}
+	return formatted.String()
+}
+
 // HandleSSE handles Server-Sent Events for real-time updates
 func (ctx *Context) HandleSSE(w http.ResponseWriter, r *http.Request) {
 	if debug {
@@ -39,7 +51,7 @@ func (ctx *Context) HandleSSE(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/event-stream")
 			w.Header().Set("Cache-Control", "no-cache")
 			w.Header().Set("Connection", "keep-alive")
-			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", sse.EventNavRedirect, ctx.RedirectSnippet(roomCode, "/"))
+			fmt.Fprintf(w, "event: %s\n%s\n", sse.EventNavRedirect, formatSSEData(ctx.RedirectSnippet(roomCode, "/")))
 			if flusher, ok := w.(http.Flusher); ok {
 				flusher.Flush()
 			}
@@ -64,7 +76,7 @@ func (ctx *Context) HandleSSE(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Connection", "keep-alive")
 
 		// Send nav-redirect snippet for HTMX to navigate home
-		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", sse.EventNavRedirect, ctx.RedirectSnippet(roomCode, "/"))
+		fmt.Fprintf(w, "event: %s\n%s\n", sse.EventNavRedirect, formatSSEData(ctx.RedirectSnippet(roomCode, "/")))
 		if flusher, ok := w.(http.Flusher); ok {
 			flusher.Flush()
 		}
@@ -148,7 +160,7 @@ func (ctx *Context) HandleSSE(w http.ResponseWriter, r *http.Request) {
 		if debug {
 			log.Printf("handleSSE: sending initial %s to player %s", eventName, playerID)
 		}
-		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", eventName, countHTML)
+		fmt.Fprintf(w, "event: %s\n%s\n", eventName, formatSSEData(countHTML))
 	} else {
 		// No game - send lobby data
 		playerListHTML := ctx.PlayerList(lobby.Players)
@@ -158,10 +170,10 @@ func (ctx *Context) HandleSSE(w http.ResponseWriter, r *http.Request) {
 		if debug {
 			log.Printf("handleSSE: sending initial lobby data to player %s", playerID)
 		}
-		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", sse.EventPlayerUpdate, playerListHTML)
-		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", sse.EventControlsUpdate, hostControlsHTML)
+		fmt.Fprintf(w, "event: %s\n%s\n", sse.EventPlayerUpdate, formatSSEData(playerListHTML))
+		fmt.Fprintf(w, "event: %s\n%s\n", sse.EventControlsUpdate, formatSSEData(hostControlsHTML))
 		if scoreTableHTML != "" {
-			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", sse.EventScoreUpdate, scoreTableHTML)
+			fmt.Fprintf(w, "event: %s\n%s\n", sse.EventScoreUpdate, formatSSEData(scoreTableHTML))
 		}
 	}
 	w.(http.Flusher).Flush()
@@ -177,7 +189,7 @@ func (ctx *Context) HandleSSE(w http.ResponseWriter, r *http.Request) {
 			if debug {
 				log.Printf("handleSSE: sending event=%s to player %s", msg.Event, playerID)
 			}
-			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", msg.Event, msg.Data)
+			fmt.Fprintf(w, "event: %s\n%s\n", msg.Event, formatSSEData(msg.Data))
 			w.(http.Flusher).Flush()
 		}
 	}

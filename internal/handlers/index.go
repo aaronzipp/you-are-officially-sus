@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"html/template"
+	"log"
 	"net/http"
 
 	"github.com/aaronzipp/you-are-officially-sus/internal/models"
@@ -22,7 +23,8 @@ type Context struct {
 func (ctx *Context) ExecutePartial(name string, data interface{}) string {
 	var buf bytes.Buffer
 	if err := ctx.Templates.ExecuteTemplate(&buf, name, data); err != nil {
-		// Log error but return empty string to avoid breaking the page
+		// Log error to help debug template issues
+		log.Printf("ERROR: ExecutePartial failed for %s: %v (data type: %T)", name, err, data)
 		return ""
 	}
 	return buf.String()
